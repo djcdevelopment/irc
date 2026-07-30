@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Community Compute over IRC — Plan</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#161a21; --panel2:#1c212b; --line:#2a3140;
+    --text:#d7dce4; --dim:#8a93a3; --faint:#5c6572;
+    --ember:#ff8c42; --ember2:#ffb347; --good:#5dd39e; --warn:#e8c268; --bad:#e06c75; --info:#6ea8fe;
+    --mono:'Cascadia Code','Consolas',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;line-height:1.55;padding:2rem 1rem 4rem}
+  .wrap{max-width:1060px;margin:0 auto}
+  header{border-bottom:2px solid var(--ember);padding-bottom:1rem;margin-bottom:1.5rem}
+  h1{font-size:1.5rem;letter-spacing:.02em}
+  h1 .x{color:var(--ember)}
+  .sub{color:var(--dim);font-size:.9rem;margin-top:.3rem}
+  .sub code{color:var(--ember2)}
+  h2{font-size:1.05rem;color:var(--ember2);margin:2.2rem 0 .8rem;text-transform:uppercase;letter-spacing:.08em;border-left:3px solid var(--ember);padding-left:.6rem}
+  h3{font-size:.95rem;color:var(--text);margin:1.2rem 0 .5rem}
+  p{margin:.6rem 0}
+  .dim{color:var(--dim)} .small{font-size:.85rem}
+  code{font-family:var(--mono);font-size:.85em;background:var(--panel2);padding:.1em .35em;border-radius:3px;color:var(--ember2)}
+  pre{font-family:var(--mono);font-size:.8rem;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:.9rem 1rem;overflow-x:auto;margin:.8rem 0;line-height:1.5}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:1rem 1.2rem;margin:.9rem 0}
+  .verdict{border-left:4px solid var(--ember);background:linear-gradient(90deg,rgba(255,140,66,.08),transparent)}
+  .verdict b{color:var(--ember2)}
+  table{width:100%;border-collapse:collapse;margin:.8rem 0;font-size:.87rem}
+  th{text-align:left;color:var(--dim);font-weight:600;border-bottom:1px solid var(--line);padding:.45rem .6rem;text-transform:uppercase;font-size:.72rem;letter-spacing:.06em}
+  td{padding:.45rem .6rem;border-bottom:1px solid rgba(42,49,64,.5);vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  .tag{display:inline-block;font-family:var(--mono);font-size:.7rem;padding:.1em .5em;border-radius:10px;white-space:nowrap}
+  .t-good{background:rgba(93,211,158,.15);color:var(--good)}
+  .t-warn{background:rgba(232,194,104,.15);color:var(--warn)}
+  .t-bad{background:rgba(224,108,117,.15);color:var(--bad)}
+  .t-info{background:rgba(110,168,254,.15);color:var(--info)}
+  .t-ember{background:rgba(255,140,66,.15);color:var(--ember)}
+  ul,ol{margin:.5rem 0 .5rem 1.4rem}
+  li{margin:.35rem 0}
+  a{color:var(--info);text-decoration:none} a:hover{text-decoration:underline}
+  .flow{font-family:var(--mono);font-size:.78rem;color:var(--dim);background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:.9rem 1rem;overflow-x:auto;white-space:pre;line-height:1.6;margin:.8rem 0}
+  .flow b{color:var(--ember2);font-weight:600}
+  .phase{border-left:3px solid var(--info);padding-left:.8rem;margin:1rem 0}
+  .phase.p1{border-color:var(--good)} .phase.p2{border-color:var(--warn)} .phase.p3{border-color:var(--ember)}
+  .phase h3{margin-top:0}
+  .foot{margin-top:3rem;border-top:1px solid var(--line);padding-top:1rem;color:var(--faint);font-size:.78rem}
+  .qnum{color:var(--ember);font-family:var(--mono);font-weight:700;margin-right:.4rem}
+</style>
+</head>
+<body><div class="wrap">
+
+<header>
+  <h1>COMMUNITY COMPUTE OVER IRC <span class="x">—</span> PLAN</h1>
+  <div class="sub">2026-07-30 · builds on <code>c:\work\irc</code> (Ergo + The Lounge, deployed &amp; hardened today) · compute layer greenfield, bolts onto HEARTH</div>
+</header>
+
+<div class="panel verdict">
+  <p><b>The substrate is done; only the interesting part is left.</b> The IRC community — Ergo (server) + The Lounge (web client), TLS on the tailnet, SASL, closed registration, hardened containers, <code>#general</code>/<code>#ops</code>, backups — is <b>already deployed</b>. The "GOAT" feature you reached for (always-on presence, backlog, multi-device reattach) is provided by <b>Ergo natively</b>; <code>QUASSEL.md</code> already refused a Quassel Core for that reason. Nothing to rebuild there. <b>The single greenfield gap is the compute bridge</b>: chat → governed inference. It maps 1:1 onto HEARTH, which already owns model endpoints, caller-profiles, scheduling, and the ledger.</p>
+</div>
+
+<h2>The architecture — one idea</h2>
+<div class="flow"><b>IRC / Ergo</b> — presence, channels, backlog, SASL identity      ← the SOCIAL / GOVERNANCE plane (humans, on the tailnet)
+     │  friend types  !models  /  !ask qwen3-30b "…"  /  !lend
+     ▼
+<b>the bot</b> — thin bridge: parse command, read speaker's SASL     ← the GATEWAY (new; the only thing to build)
+     │  account, enforce allow-list + rate, call the back end
+     ▼
+<b>HEARTH / mechnet</b> — model endpoints, caller-profiles,          ← the GOVERNED COMPUTE plane (already exists)
+     scheduling/tenancy, the ledger (provenance for free)
+     ▼
+your B70s (120B :8082, mesh-llm, oxen) · a friend's lent API key · a lent remote agent</div>
+<p class="small dim">This is your existing three-plane doctrine (sense / act / HEARTH-boundary) with IRC as the human-facing plane. The bot is deliberately dumb — it never decides constraints, it delegates them to HEARTH (keeps the governor deterministic; the bot is hands, not judge).</p>
+
+<h2>Requirement → mechanism</h2>
+<table>
+  <tr><th>What you asked for</th><th>State</th><th>Mechanism</th></tr>
+  <tr><td>Lightest-lift community/channel close friends can join</td><td><span class="tag t-good">✅ built</span></td><td>Ergo + The Lounge on the tailnet. Only open decision: how non-tailnet friends join — <b>invite them to the tailnet</b> (humans on the tailnet is ADR-0014-compliant; cleanest, safest) vs Funnel (more exposure).</td></tr>
+  <tr><td>Expose hardware <b>with constraints</b>; others pick a model from your configured selection</td><td><span class="tag t-ember">greenfield</span></td><td>Bot commands: <code>!models</code> (lists your allow-list), <code>!ask &lt;model&gt; &lt;prompt&gt;</code> → routes to the endpoint. <b>Constraints</b> = allow-list + HEARTH caller-profile (deny-by-default) + scheduling window (don't preempt the resident 120B — reuse the tenancy/governance work).</td></tr>
+  <tr><td>Someone with a repo API key can <b>"lend" their remote agent</b> to the channel</td><td><span class="tag t-ember">greenfield</span></td><td>Provider registry: a member registers a key <b>via DM/web, never in-channel</b>; the bot exposes it as a named agent with per-lender rate/quota/revocation. "Contribute what you can" — GPUs or keys.</td></tr>
+</table>
+
+<h2>Paths forward — phased</h2>
+
+<div class="phase"><h3>Phase 0 — decisions (no code)</h3>
+<ul>
+  <li><b>Join model for friends:</b> tailnet invite (recommended — matches the current tailnet-restricted posture &amp; ADR-0014) vs Funnel.</li>
+  <li><b>Bot language/host:</b> <b>Python on OMEN</b> (recommended) — it can import the HEARTH client in-process, so "route through HEARTH" is a function call, not a new network hop. (Node would reuse The Lounge's ecosystem; Go for a single static binary.)</li>
+  <li><b>Where the model allow-list lives:</b> reuse <code>hearth/etc/backends.toml</code> or a new bot-side registry with per-model constraints.</li>
+</ul></div>
+
+<div class="phase p1"><h3>Phase 1 — thin slice: read-only bot (proves the loop, zero new infra)</h3>
+<ul>
+  <li>Python bot connects to Ergo as a bot user, listens in <code>#general</code>.</li>
+  <li><code>!models</code> → prints the allowed selection. <code>!ask &lt;model&gt; &lt;prompt&gt;</code> → calls the <b>already-running 120B at <code>:8082</code></b> (and any loaded endpoint), posts the answer back.</li>
+  <li>Per-user rate limit in the bot; long output → chunk or paste-link (IRC's 512-byte line limit). <b>⚠ reasoning-model gotcha:</b> gpt-oss-120b needs a generous max-output budget or it returns empty <code>content</code>.</li>
+  <li><b>Deliverable proof:</b> a friend in the channel asks a question → it runs on your B70s → answer returns. No card downtime, no new services.</li>
+</ul></div>
+
+<div class="phase p2"><h3>Phase 2 — governed: route through HEARTH</h3>
+<ul>
+  <li>Every request goes through a HEARTH <b>caller-profile</b> keyed to the speaker's IRC SASL account → constraints + <b>ledger provenance</b> for free (centralized-capture doctrine holds).</li>
+  <li><b>Scheduling integration:</b> a model that needs the B70s <em>queues a window</em> via the scheduler instead of preempting the resident tenant — "available now" (only loaded models) vs <code>!request</code> (job-shop queue).</li>
+</ul></div>
+
+<div class="phase p3"><h3>Phase 3 — pooled contribution</h3>
+<ul>
+  <li><b>Lend-a-key</b> provider registry (custody, revocation, per-lender quota).</li>
+  <li>The bot ALSO exposes the pool as an <b>OpenAI-compatible endpoint</b> → a member's Buzz agent or any harness can consume the community pool directly. <span class="tag t-info">converges with the Buzz thread</span> (Buzz agents consume Provider+Model — this becomes that provider).</li>
+</ul></div>
+
+<h2>Research / open questions</h2>
+<ol>
+  <li><span class="qnum">R1</span><b>IRC identity → HEARTH caller:</b> confirm Ergo surfaces the authenticated SASL account to a bot (IRCv3 <code>account-tag</code> / WHOX) so the bot can map speaker → profile. Almost certainly yes (Ergo has strong IRCv3 support) — verify.</li>
+  <li><span class="qnum">R2</span><b>Model registry schema:</b> reuse <code>backends.toml</code> or new? Per-model constraints — max tokens, which cards, schedulable-or-loaded, per-user quota.</li>
+  <li><span class="qnum">R3</span><b>Key custody for lending:</b> encrypted store, DM/web intake (never in-channel), revocation. Does HEARTH's authority-domain model already express a "lent provider" (caller-scoped authority)?</li>
+  <li><span class="qnum">R4</span><b>Scheduling UX:</b> "available now" list vs queued windows; how the bot reflects tenancy state (is the 120B up? is a card free?) back into the channel.</li>
+  <li><span class="qnum">R5</span><b>Output handling:</b> IRC line limits — chunk vs paste-service vs render in The Lounge; streaming tokens vs single post.</li>
+  <li><span class="qnum">R6</span><b>Abuse/safety:</b> the bot is a new semi-external surface → deny-by-default like HEARTH callers; rate/quota per account; content boundaries for a shared channel.</li>
+  <li><span class="qnum">R7</span><b>Bot framework:</b> Python <code>pydle</code>/<code>irc</code>/<code>bottom</code> vs Node <code>irc-framework</code> vs Go <code>girc</code> — pick for in-process HEARTH access + IRCv3 support.</li>
+</ol>
+
+<h2>Recommendation</h2>
+<div class="panel verdict"><p><b>Build Phase 1 first — a Python bot on OMEN, <code>!models</code> / <code>!ask</code>, against the live 120B, tailnet-only, one close friend invited.</b> It proves the entire loop (friend in channel → asks → runs on your B70s → answer back) with zero new infra and no card downtime. Governance, lending, and scheduling all layer cleanly onto a working loop — don't build them until the loop breathes. This is the same "thinnest end-to-end slice as a perception instrument" discipline that just paid off on the Buzz thread.</p></div>
+
+<div class="foot">
+  <p><b>Method:</b> buildout facts extracted from <code>c:\work\irc</code> docs via HEARTH (<code>gemini-3.5-flash</code>, ~9k tokens); architecture/paths reasoned on-frontier. Live secret files (<code>.env</code>, <code>ircd.yaml</code>, <code>bootstrap.json</code>) were NOT sent to the cloud rung.</p>
+  <p>Related: HEARTH caller-profiles (ADR-0019/22) · tenancy (ADR-0018) · tailnet policy (ADR-0014) · Funnel+Caddy lane (ADR-0025) · BUZZ-COLLAB-BRIEF.html (Buzz consumes Provider+Model — the OpenAI-compat convergence point).</p>
+</div>
+
+</div></body>
+</html>
