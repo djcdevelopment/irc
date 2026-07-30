@@ -1,0 +1,82 @@
+name: omen-irc
+
+services:
+  ergo:
+    image: ghcr.io/ergochat/ergo:v2.19.0
+    init: true
+    restart: unless-stopped
+    entrypoint:
+      - /ircd-bin/ergo
+    command:
+      - run
+      - --conf
+      - /ircd/ircd.yaml
+    ports:
+      - name: ircs
+        target: 6697
+        published: "${ERGO_TLS_PORT:-6697}"
+        host_ip: "${HOST_BIND_IP:?Set HOST_BIND_IP in .env}"
+        protocol: tcp
+    expose:
+      - "6667"
+    volumes:
+      - type: bind
+        source: ./config/ergo/ircd.yaml
+        target: /ircd/ircd.yaml
+        read_only: true
+      - type: bind
+        source: ./config/ergo/motd.txt
+        target: /ircd/motd.txt
+        read_only: true
+      - type: bind
+        source: ./data/ergo
+        target: /var/lib/ergo
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z -w 2 127.0.0.1 6667 && nc -z -w 2 127.0.0.1 6697"]
+      interval: 10s
+      timeout: 4s
+      retries: 12
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - irc
+
+  thelounge:
+    image: ghcr.io/thelounge/thelounge:4.5.2
+    restart: unless-stopped
+    depends_on:
+      ergo:
+        condition: service_healthy
+    ports:
+      - name: web
+        target: 9000
+        published: "${THELOUNGE_PORT:-9000}"
+        host_ip: "${HOST_BIND_IP:?Set HOST_BIND_IP in .env}"
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: ./data/thelounge
+        target: /var/opt/thelounge
+      - type: bind
+        source: ./config/thelounge/config.js
+        target: /defaults/config.js
+        read_only: true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:9000/"]
+      interval: 10s
+      timeout: 4s
+      retries: 12
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - irc
+
+networks:
+  irc:
+    driver: bridge

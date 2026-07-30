@@ -1,0 +1,29 @@
+# Local deployment parameters and generated credentials
+.env
+.secrets/
+
+# Generated Ergo configuration contains the operator password hash
+config/ergo/ircd.yaml
+
+# Runtime databases, history, certificates, user configuration, and logs
+data/ergo/*
+data/thelounge/*
+!data/ergo/.gitkeep
+!data/thelounge/.gitkeep
+
+# Backups contain runtime data and may contain credentials
+backups/
+
+# AM4 deployment artifacts and one-time migration staging
+.am4/
+*.tar.gz
+*.tar.gz.sha256
+
+# PowerShell and editor artifacts
+*.tmp
+*.bak
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

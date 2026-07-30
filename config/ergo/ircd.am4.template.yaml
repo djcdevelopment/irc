@@ -1,0 +1,217 @@
+# Generated on AM4 by scripts/bootstrap-am4.sh.
+# The public TLS session terminates at Tailscale Funnel. Port 6668 requires
+# PROXY protocol v2; port 6667 is private to the Compose network.
+
+network:
+    name: "@@NETWORK_NAME@@"
+
+server:
+    name: "@@SERVER_NAME@@"
+    listeners:
+        ":6667":
+        ":6668":
+            proxy: true
+    sts:
+        enabled: false
+        duration: 0
+        port: 0
+        preload: false
+    casemapping: ascii
+    enforce-utf8: true
+    lookup-hostnames: false
+    forward-confirm-hostnames: true
+    check-ident: false
+    coerce-ident: "~u"
+    motd: /ircd/motd.txt
+    motd-formatting: true
+    idle-timeouts:
+        registration: 60s
+        ping: 1m30s
+        disconnect: 2m30s
+    # Docker is the only peer allowed to assert a PROXY header. Ergo then
+    # applies limits and cloaking to the original public client address.
+    proxy-allowed-from:
+        - "172.16.0.0/12"
+    max-sendq: 96k
+    compatibility:
+        force-trailing: true
+        send-unprefixed-sasl: true
+        allow-truncation: false
+    ip-limits:
+        count: true
+        max-concurrent-connections: 16
+        throttle: true
+        window: 10m
+        max-connections-per-window: 32
+        cidr-len-ipv4: 32
+        cidr-len-ipv6: 64
+        exempted:
+            - localhost
+    ip-cloaking:
+        enabled: true
+        enabled-for-always-on: true
+        netname: "omen"
+        cidr-len-ipv4: 32
+        cidr-len-ipv6: 64
+        num-bits: 64
+    # The Lounge and the loopback-only Funnel handoff are plaintext only after
+    # crossing an encrypted boundary. Neither listener is reachable directly.
+    secure-nets:
+        - "172.16.0.0/12"
+    oper-throttle: 10s
+
+accounts:
+    authentication-enabled: true
+    registration:
+        enabled: false
+        allow-before-connect: false
+        throttling:
+            enabled: true
+            duration: 10m
+            max-attempts: 10
+        bcrypt-cost: 12
+        verify-timeout: 32h
+    login-throttling:
+        enabled: true
+        duration: 1m
+        max-attempts: 3
+    skip-server-password: false
+    login-via-pass-command: true
+    advertise-scram: true
+    require-sasl:
+        enabled: true
+        # Used only by docker-exec bootstrap/recovery sessions.
+        exempted:
+            - localhost
+    nick-reservation:
+        enabled: true
+        additional-nick-limit: 2
+        method: strict
+        allow-custom-enforcement: false
+        guest-nickname-format: "Guest-*"
+        force-guest-format: false
+        force-nick-equals-account: true
+        forbid-anonymous-nick-changes: true
+    multiclient:
+        enabled: true
+        allowed-by-default: true
+        always-on: "opt-out"
+        auto-away: "opt-out"
+    vhosts:
+        enabled: false
+
+channels:
+    default-modes: +ntC
+    max-channels-per-client: 50
+    operator-only-creation: false
+    registration:
+        enabled: true
+        operator-only: false
+        max-channels-per-account: 10
+    list-delay: 0s
+    invite-expiration: 24h
+
+oper-classes:
+    server-admin:
+        title: Server Administrator
+        capabilities:
+            - kill
+            - ban
+            - nofakelag
+            - relaymsg
+            - vhosts
+            - sajoin
+            - samode
+            - snomasks
+            - roleplay
+            - rehash
+            - accreg
+            - chanreg
+            - history
+            - defcon
+            - massmessage
+            - metadata
+
+opers:
+    admin:
+        class: server-admin
+        hidden: true
+        whois-line: is the private network administrator
+        password: "@@OPER_PASSWORD_HASH@@"
+
+logging:
+    - method: stderr
+      type: "* -userinput -useroutput"
+      level: info
+
+datastore:
+    path: /var/lib/ergo/ircd.db
+    autoupgrade: true
+    sqlite:
+        enabled: true
+        database-path: /var/lib/ergo/ergo_history.db
+        busy-timeout: 5s
+        max-conns: 1
+
+languages:
+    enabled: true
+    default: en
+    path: /ircd-bin/languages
+
+limits:
+    nicklen: 32
+    identlen: 20
+    realnamelen: 150
+    channellen: 64
+    awaylen: 390
+    kicklen: 390
+    topiclen: 390
+    monitor-entries: 100
+    whowas-entries: 100
+    chan-list-modes: 100
+    registration-messages: 1024
+    multiline:
+        max-bytes: 4096
+        max-lines: 100
+
+fakelag:
+    enabled: true
+    window: 1s
+    burst-limit: 5
+    messages-per-window: 2
+    cooldown: 2s
+    command-budgets:
+        CHATHISTORY: 16
+        MARKREAD: 16
+        MONITOR: 1
+        WHO: 4
+
+history:
+    enabled: true
+    channel-length: 2048
+    client-length: 256
+    autoresize-window: 3d
+    autoreplay-on-join: 0
+    chathistory-maxmessages: 1000
+    znc-maxmessages: 2048
+    restrictions:
+        expire-time: 30d
+        query-cutoff: none
+        grace-period: 1h
+    persistent:
+        enabled: true
+        unregistered-channels: false
+        registered-channels: mandatory
+        direct-messages: opt-out
+    retention:
+        allow-individual-delete: false
+        enable-account-indexing: true
+    tagmsg-storage:
+        default: false
+
+roleplay:
+    enabled: false
+
+debug:
+    recover-from-errors: true
+    pprof-listener:

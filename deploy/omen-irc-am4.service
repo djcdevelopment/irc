@@ -1,0 +1,18 @@
+[Unit]
+Description=Omen IRC Docker Compose stack
+Requires=docker.service
+After=docker.service tailscaled.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/omen-irc
+ExecStart=/home/derek/.docker/cli-plugins/docker-compose -f compose.am4.yaml up -d
+ExecReload=/home/derek/.docker/cli-plugins/docker-compose -f compose.am4.yaml restart
+ExecStop=/home/derek/.docker/cli-plugins/docker-compose -f compose.am4.yaml stop
+TimeoutStartSec=180
+TimeoutStopSec=120
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+Welcome to Omen Private IRC.
+
+This is a small private community network reachable only through the tailnet.
+Authenticate with your personal Ergo account using SASL. Do not share account
+or operator passwords. Start in #general; infrastructure notices are in #ops.
+
+History is retained for 30 days on registered channels. Contact the network
+operator if you need an account, access recovery, or help trusting the TLS
+certificate.

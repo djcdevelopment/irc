@@ -1,0 +1,85 @@
+name: omen-irc-am4
+
+services:
+  ergo:
+    image: ghcr.io/ergochat/ergo:v2.19.0
+    init: true
+    restart: unless-stopped
+    entrypoint:
+      - /ircd-bin/ergo
+    command:
+      - run
+      - --conf
+      - /ircd/ircd.yaml
+    ports:
+      # Tailscale Funnel is the only intended consumer of this listener.
+      - name: funnel-backend
+        target: 6668
+        published: "6668"
+        host_ip: 127.0.0.1
+        protocol: tcp
+    expose:
+      - "6667"
+    volumes:
+      - type: bind
+        source: /etc/omen-irc/ircd.yaml
+        target: /ircd/ircd.yaml
+        read_only: true
+      - type: bind
+        source: /opt/omen-irc/config/ergo/motd.txt
+        target: /ircd/motd.txt
+        read_only: true
+      - type: bind
+        source: /var/lib/omen-irc/ergo
+        target: /var/lib/ergo
+    healthcheck:
+      # Do not probe 6668 with a raw TCP connect: it intentionally requires a
+      # complete PROXY v2 header from Funnel.
+      test: ["CMD-SHELL", "nc -z -w 2 127.0.0.1 6667"]
+      interval: 10s
+      timeout: 4s
+      retries: 12
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - irc
+
+  thelounge:
+    image: ghcr.io/thelounge/thelounge:4.5.2
+    restart: unless-stopped
+    depends_on:
+      ergo:
+        condition: service_healthy
+    ports:
+      - name: web
+        target: 9000
+        published: "9000"
+        host_ip: 127.0.0.1
+        protocol: tcp
+    volumes:
+      - type: bind
+        source: /var/lib/omen-irc/thelounge
+        target: /var/opt/thelounge
+      - type: bind
+        source: /opt/omen-irc/config/thelounge/config.js
+        target: /defaults/config.js
+        read_only: true
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:9000/"]
+      interval: 10s
+      timeout: 4s
+      retries: 12
+      start_period: 15s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    networks:
+      - irc
+
+networks:
+  irc:
+    driver: bridge
