@@ -6,8 +6,10 @@ WORKDIR /app
 COPY server.js /app/server.js
 COPY public /app/public
 COPY agent-kit /app/agent-kit
+COPY tests/test-public-app.js /app/tests/test-public-app.js
 
-RUN chown -R node:node /app
+RUN node /app/tests/test-public-app.js \
+    && chown -R node:node /app
 
 USER node
 ENTRYPOINT ["node", "--no-warnings", "/app/server.js"]

@@ -107,6 +107,9 @@ curl --fail --silent --show-error --max-time 5 http://127.0.0.1:9000/ >/dev/null
 pass "The Lounge responds over HTTP on loopback"
 curl --fail --silent --show-error --max-time 5 http://127.0.0.1:9010/health >/dev/null
 pass "The one-time join portal responds over HTTP on loopback"
+"${compose[@]}" -f "$compose_file" exec -T community-portal \
+    node /app/tests/test-public-app.js >/dev/null
+pass "The onboarding browser script initializes the invitation form"
 
 if ! python3 - /etc/omen-irc/bootstrap.json \
     /var/lib/omen-irc/thelounge/users <<'PY'

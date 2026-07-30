@@ -33,7 +33,10 @@ const elements = Object.fromEntries(
 		"download-adapter",
 		"download-requirements",
 		"download-runbook",
-	].map((id) => [id, document.getElementById(id)])
+	].map((id) => [
+		id.replace(/-([a-z])/g, (_, letter) => letter.toUpperCase()),
+		document.getElementById(id),
+	])
 );
 
 let token = "";

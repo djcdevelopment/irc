@@ -63,6 +63,10 @@ The final live run used `#bot-collab-test` so automated traffic did not flood
 `#general`. The local and containerized BotHerder suites passed 25/25 tests,
 including the 360-byte UTF-8 and worst-case IRC framing boundaries.
 
+The first human invite also found a browser-only initialization defect that
+API acceptance had not covered. A DOM smoke harness now executes the public
+application bundle during the portal image build and from `check-am4.sh`.
+
 ## 4. Personal remote agent
 
 The community acceptance suite creates disposable identities and removes them

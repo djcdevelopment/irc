@@ -148,6 +148,14 @@ to reducing a safe payload based on the wrong protocol boundary.
 Automated long-output tests briefly filled `#general`. They now invite the
 Herder into `#bot-collab-test`, leaving the human channel readable.
 
+### API acceptance did not exercise the browser
+
+The first real member invitation exposed a front-end initialization failure:
+HTML IDs used kebab-case while the JavaScript read camelCase properties. API
+acceptance passed because it never executed the browser bundle. The portal
+image now runs a dependency-free DOM smoke harness during every build, and the
+AM4 health check executes the same harness against the installed assets.
+
 ## Deliberate tradeoffs
 
 - **Funnel dependency:** removes certificate and router work, but is a beta
