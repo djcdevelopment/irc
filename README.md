@@ -6,17 +6,23 @@ This repository deploys a lightweight IRC environment with Docker Compose:
 
 - Ergo IRC server
 - The Lounge private browser client and administrative fallback
+- A one-time onboarding portal and public private-mode browser lobby
+- One owner-scoped BotHerder IRC identity per community member
+- An outbound-only remote-agent adapter for member-controlled model endpoints
 - Persistent accounts, registered channels, message history, and Lounge state
 - Linux/AM4 production operations and Windows/OMEN rollback operations
 
 The current production host is AM4. Public native IRC is available through
 Tailscale Funnel at `am4.tail8e749c.ts.net:8443`; users do not need Tailscale.
 The previous OMEN deployment is retained as a stopped rollback copy.
+The architecture pivots, lessons, and remaining reliability work are recorded
+in [docs/RETROSPECTIVE.md](docs/RETROSPECTIVE.md).
 
 Pinned official images:
 
 - `ghcr.io/ergochat/ergo:v2.19.0`
 - `ghcr.io/thelounge/thelounge:4.5.2`
+- `python:3.14.5-slim-bookworm` as the BotHerder/adapter build base
 
 ## 2. Why Ergo
 
@@ -37,19 +43,30 @@ Core and cannot connect to an IRC server. See
 
 ## 4. What The Lounge adds
 
-The Lounge is an optional browser client and administrative fallback. It runs
-in private mode, stores each user's configuration persistently, and connects to
-Ergo over the private Compose network. No default Lounge user or shared
-password is created. Its UI is deliberately not public.
+The Lounge is the zero-install browser lobby at
+`https://am4.tail8e749c.ts.net:10000/`. It remains in private mode: the
+one-time portal creates a distinct Lounge login and preconfigured Ergo SASL
+network for each invited member. There is no shared password.
+
+Each member also receives a separately authenticated, owner-scoped BotHerder
+session with their chosen IRC name. It can use operator-allow-listed AM4 models
+and invite any number of outbound remote agents. See
+[docs/COMMUNITY-ONBOARDING.md](docs/COMMUNITY-ONBOARDING.md) and
+[docs/COMPUTE-BOT.md](docs/COMPUTE-BOT.md).
 
 ## 5. Current access boundary
 
 | Endpoint | Bind/path | Transport | Audience |
 |---|---|---|---|
 | Public IRC | `am4.tail8e749c.ts.net:8443` | Trusted TLS 1.3 through Tailscale Funnel | Internet; SASL account required |
+| Join portal | `https://am4.tail8e749c.ts.net/join/` | Trusted HTTPS through Funnel | One-time token required |
+| Browser lobby | `https://am4.tail8e749c.ts.net:10000/` | Trusted HTTPS through Funnel | Personal Lounge login required |
 | Funnel backend | `127.0.0.1:6668` on AM4 | Plain IRC plus PROXY v2 after TLS termination | Local tailscaled only |
-| The Lounge | `127.0.0.1:9000` on AM4 | HTTP | Operator SSH tunnel only |
+| The Lounge backend | `127.0.0.1:9000` on AM4 | HTTP after local TLS termination | Local tailscaled only |
+| Join backend | `127.0.0.1:9010` on AM4 | HTTP after local TLS termination | Local tailscaled only |
 | Internal Ergo | `ergo:6667` | Plain IRC | Compose network only |
+| BotHerder IRC handoff | `127.0.0.1:6667` on AM4 | Plain IRC | Host-networked BotHerder only |
+| Seeded model | `127.0.0.1:8082/v1` from BotHerder | HTTP plus Bearer authentication | AM4-local inference |
 
 There is no router port forwarding, public VM, Cloudflare configuration, or
 publicly bound Docker TCP port for IRC. Registration is disabled, all normal
@@ -77,10 +94,19 @@ With the repository installed at `/opt/omen-irc` on AM4:
 sudo /opt/omen-irc/scripts/bootstrap-am4.sh
 ```
 
-The script detects AM4's Tailscale identity, creates protected local secrets
-when absent, renders configuration, pulls pinned images, starts the services,
-waits for health, initializes a fresh database when needed, and runs validation.
-It is safe to rerun and does not destroy existing state.
+The script detects AM4's Tailscale identity, creates protected IRC, registrar,
+portal, and BotHerder secrets, renders configuration, builds pinned images,
+provisions non-oper accounts, publishes the additive Funnel routes, starts the
+services, waits for health, and runs validation. It is rerunnable.
+
+Create a 24-hour one-time invitation from Windows:
+
+```powershell
+.\scripts\invite-community.ps1 -DisplayName "Sam"
+```
+
+The installed Codex skill is `$invite-irc-community`; its distributable source
+is in [`skills/invite-irc-community`](skills/invite-irc-community).
 
 The additive Funnel command is:
 
@@ -115,6 +141,8 @@ On AM4:
 ```bash
 sudo /opt/omen-irc/scripts/check-am4.sh --require-funnel
 sudo /opt/omen-irc/scripts/check-am4.sh --require-funnel --persistence
+sudo python3 /opt/omen-irc/scripts/acceptance-compute-bot-am4.py
+sudo python3 /opt/omen-irc/scripts/acceptance-community-am4.py
 sudo systemctl status omen-irc-am4
 ```
 
@@ -146,12 +174,21 @@ instructions are in [docs/AM4.md](docs/AM4.md) and
   limits and only selected public ports; IRC therefore uses 8443.
 - The TLS-to-Ergo handoff is plaintext on AM4 loopback after Funnel terminates
   encryption.
-- The Lounge is operator-only unless a future authenticated HTTPS publication
-  is designed.
+- Steam/OpenID recovery binding is not implemented yet.
 - History retention is 30 days.
-- The Lounge has no user until an operator creates one interactively.
+- A user must save the generated password before leaving the redemption page;
+  it is deliberately shown once.
 - The first true off-tailnet acceptance test still requires a Quassel client on
   a non-Tailscale network.
+- BotHerder uses host networking to reach AM4 loopback model endpoints. Its
+  non-root, read-only container can therefore see other loopback listeners even
+  though users can invoke only allow-listed model URLs.
+- BotHerder request limits are currently per member while every Herder shares
+  the same llama.cpp endpoint. Do not raise per-member throughput until a
+  supervisor-level global scheduler bounds aggregate concurrency.
+- Per-Herder rate limits are in-memory and reset when the container restarts.
+- Token metrics are reported only when a provider supplies them; the UI says
+  `not reported` instead of inventing a zero.
 
 ## 12. Future direct-public-exposure work
 

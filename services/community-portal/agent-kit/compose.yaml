@@ -1,0 +1,18 @@
+name: omen-agent-adapter
+
+services:
+  agent:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - agent.env
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=1m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 1.0

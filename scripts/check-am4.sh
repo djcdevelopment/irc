@@ -53,7 +53,7 @@ resolve_compose
 "${compose[@]}" -f "$compose_file" config --quiet
 pass "Compose configuration is valid"
 
-for service in ergo thelounge; do
+for service in ergo thelounge community-portal bot-herder; do
     container_id="$("${compose[@]}" -f "$compose_file" ps -q "$service")"
     [[ -n "$container_id" ]] || fail "$service container is absent"
     state="$(docker inspect --format '{{.State.Status}}' "$container_id")"
@@ -65,7 +65,11 @@ for service in ergo thelounge; do
     pass "$service is running, healthy, and not restart-looping"
 done
 
-for directory in /var/lib/omen-irc/ergo /var/lib/omen-irc/thelounge; do
+for directory in \
+    /var/lib/omen-irc/ergo \
+    /var/lib/omen-irc/thelounge \
+    /var/lib/omen-irc/community \
+    /var/lib/omen-irc/bot-herder; do
     [[ -d "$directory" ]] || fail "Missing persistent directory $directory"
     pass "Persistent directory exists: $directory"
 done
@@ -75,12 +79,16 @@ pass "Ergo account and history databases exist"
 
 ss -lnt | grep -Eq '127\.0\.0\.1:6668[[:space:]]' ||
     fail "Funnel backend is not listening on 127.0.0.1:6668"
+ss -lnt | grep -Eq '127\.0\.0\.1:6667[[:space:]]' ||
+    fail "BotHerder IRC handoff is not listening on 127.0.0.1:6667"
 ss -lnt | grep -Eq '127\.0\.0\.1:9000[[:space:]]' ||
     fail "The Lounge is not listening on 127.0.0.1:9000"
-if ss -lnt | grep -Eq '(^|[[:space:]])(\*|0\.0\.0\.0|\[::\]):(6667|6668|6697|9000)[[:space:]]'; then
+ss -lnt | grep -Eq '127\.0\.0\.1:9010[[:space:]]' ||
+    fail "Join portal is not listening on 127.0.0.1:9010"
+if ss -lnt | grep -Eq '(^|[[:space:]])(\*|0\.0\.0\.0|\[::\]):(6667|6668|6697|9000|9010)[[:space:]]'; then
     fail "An IRC/Lounge port is bound to a broad host interface"
 fi
-pass "Host ports 6668 and 9000 are loopback-only; 6667/6697 are not published"
+pass "Host ports 6667, 6668, 9000, and 9010 are loopback-only"
 
 irc_response="$(
     {
@@ -97,6 +105,42 @@ pass "Ergo responds over IRC protocol"
 
 curl --fail --silent --show-error --max-time 5 http://127.0.0.1:9000/ >/dev/null
 pass "The Lounge responds over HTTP on loopback"
+curl --fail --silent --show-error --max-time 5 http://127.0.0.1:9010/health >/dev/null
+pass "The one-time join portal responds over HTTP on loopback"
+
+if ! python3 - /etc/omen-irc/bootstrap.json \
+    /var/lib/omen-irc/thelounge/users <<'PY'
+import hmac
+import json
+import pathlib
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    bootstrap = json.load(handle)
+account = bootstrap["AdminAccount"]
+password = bootstrap["AdminPassword"]
+profile_path = pathlib.Path(sys.argv[2], f"{account}.json")
+with profile_path.open(encoding="utf-8") as handle:
+    profile = json.load(handle)
+networks = profile.get("networks", [])
+if len(networks) != 1:
+    raise SystemExit(1)
+network = networks[0]
+expected = {
+    "host": "ergo",
+    "port": 6667,
+    "sasl": "plain",
+    "saslAccount": account,
+}
+if any(network.get(key) != value for key, value in expected.items()):
+    raise SystemExit(1)
+if not hmac.compare_digest(network.get("saslPassword", ""), password):
+    raise SystemExit(1)
+PY
+then
+    fail "The initial admin has no matching private Lounge profile"
+fi
+pass "The initial admin has a preconfigured matching Lounge profile"
 
 "${compose[@]}" -f "$compose_file" exec -T thelounge \
     node -e 'require("dns").lookup("ergo",(e,a)=>{if(e)process.exit(1);console.log(a)})' \
@@ -110,6 +154,13 @@ elif [[ "$require_funnel" == true ]]; then
     fail "Tailscale Funnel does not show the IRC port 8443"
 else
     warn "Funnel 8443 is not enabled yet"
+fi
+if grep -q '10000' <<<"$funnel_status" && grep -q '/join' <<<"$funnel_status"; then
+    pass "Tailscale Funnel publishes the browser lobby and /join"
+elif [[ "$require_funnel" == true ]]; then
+    fail "Tailscale Funnel does not show both lobby port 10000 and /join"
+else
+    warn "Funnel browser paths are not enabled yet"
 fi
 
 if [[ "$persistence" == true ]]; then
@@ -167,16 +218,19 @@ PY
             "${compose[@]}" -f "$compose_file" ps --format json 2>/dev/null |
                 grep -c '"Health":"healthy"' || true
         )"
-        [[ "$health" -ge 2 ]] && break
+        [[ "$health" -ge 4 ]] && break
         sleep 3
     done
-    [[ "${health:-0}" -ge 2 ]] || fail "Services did not recover after restart"
+    [[ "${health:-0}" -ge 4 ]] || fail "Services did not recover after restart"
 
     after="$(authenticated_probe)"
     grep -q ' 900 ' <<<"$after" || fail "Admin SASL authentication failed after restart"
     grep -q "$marker" <<<"$after" || fail "The pre-restart history marker was not replayed"
     pass "Account, registered channels, and message history survived restart"
 fi
+
+"$project_dir/scripts/check-compute-bot-am4.sh"
+pass "BotHerder-specific validation passed"
 
 printf '\n%d checks passed' "$pass_count"
 if ((warn_count > 0)); then

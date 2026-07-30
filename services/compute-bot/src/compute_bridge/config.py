@@ -1,0 +1,345 @@
+from __future__ import annotations
+
+import os
+import re
+import tomllib
+from dataclasses import dataclass, field
+from pathlib import Path
+from types import MappingProxyType
+from typing import Mapping
+from urllib.parse import urlparse
+
+
+class ConfigError(ValueError):
+    """Raised when operator configuration is invalid."""
+
+
+@dataclass(frozen=True)
+class IRCConfig:
+    server: str
+    port: int
+    nick: str
+    account: str
+    password_env: str
+    password: str = field(repr=False)
+    owner_account: str
+    access_mode: str
+    channels: tuple[str, ...]
+    reconnect_initial_seconds: float
+    reconnect_max_seconds: float
+
+
+@dataclass(frozen=True)
+class LimitsConfig:
+    requests_per_minute: int
+    max_prompt_bytes: int
+    max_output_bytes: int
+    max_output_lines: int
+    irc_payload_bytes: int
+    max_concurrent_requests: int
+    max_pending_requests: int
+
+
+@dataclass(frozen=True)
+class HealthConfig:
+    heartbeat_path: str
+    heartbeat_interval_seconds: float
+
+
+@dataclass(frozen=True)
+class CommunityConfig:
+    portal_url: str
+    internal_token_env: str
+    internal_token: str = field(repr=False)
+    agent_timeout_seconds: float
+
+
+@dataclass(frozen=True)
+class ModelConfig:
+    name: str
+    model_id: str
+    endpoint: str
+    api_key_env: str
+    api_key: str = field(repr=False)
+    max_tokens: int
+    min_max_tokens: int
+    description: str
+    timeout_seconds: float
+
+    @property
+    def effective_max_tokens(self) -> int:
+        return max(self.max_tokens, self.min_max_tokens)
+
+
+@dataclass(frozen=True)
+class AppConfig:
+    irc: IRCConfig
+    limits: LimitsConfig
+    health: HealthConfig
+    community: CommunityConfig
+    models: Mapping[str, ModelConfig]
+    log_level: str
+
+    @property
+    def secrets(self) -> tuple[str, ...]:
+        return (
+            self.irc.password,
+            self.community.internal_token,
+            *(model.api_key for model in self.models.values()),
+        )
+
+
+def _read_toml(path: str | Path) -> dict:
+    try:
+        with Path(path).open("rb") as handle:
+            return tomllib.load(handle)
+    except FileNotFoundError as exc:
+        raise ConfigError(f"configuration file not found: {path}") from exc
+    except tomllib.TOMLDecodeError as exc:
+        raise ConfigError(f"invalid TOML in {path}: {exc}") from exc
+
+
+def _required_string(table: dict, key: str, context: str) -> str:
+    value = table.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise ConfigError(f"{context}.{key} must be a non-empty string")
+    if "\r" in value or "\n" in value or "\0" in value:
+        raise ConfigError(f"{context}.{key} contains a forbidden control character")
+    return value.strip()
+
+
+def _integer(
+    table: dict,
+    key: str,
+    context: str,
+    *,
+    default: int | None = None,
+    minimum: int = 1,
+    maximum: int | None = None,
+) -> int:
+    value = table.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ConfigError(f"{context}.{key} must be an integer")
+    if value < minimum or (maximum is not None and value > maximum):
+        suffix = f" through {maximum}" if maximum is not None else " or greater"
+        raise ConfigError(f"{context}.{key} must be {minimum}{suffix}")
+    return value
+
+
+def _number(
+    table: dict,
+    key: str,
+    context: str,
+    *,
+    default: float,
+    minimum: float,
+) -> float:
+    value = table.get(key, default)
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value < minimum:
+        raise ConfigError(f"{context}.{key} must be a number >= {minimum}")
+    return float(value)
+
+
+def _load_irc(raw: dict, environ: Mapping[str, str]) -> IRCConfig:
+    table = raw.get("irc")
+    if not isinstance(table, dict):
+        raise ConfigError("bot configuration requires an [irc] table")
+
+    server = _required_string(table, "server", "irc")
+    port = _integer(table, "port", "irc", minimum=1, maximum=65535)
+    nick = _required_string(table, "nick", "irc")
+    account = _required_string(table, "account", "irc")
+    password_env = _required_string(table, "password_env", "irc")
+    password = environ.get(password_env, "")
+    if not password:
+        raise ConfigError(f"required IRC secret environment variable is unset: {password_env}")
+    if not re.fullmatch(r"[A-Za-z0-9\[\]{}\\`_^|\-]+", nick):
+        raise ConfigError("irc.nick contains unsupported characters")
+    owner_account = _required_string(table, "owner_account", "irc")
+    access_mode = table.get("access_mode", "owner")
+    if access_mode not in {"owner", "authenticated"}:
+        raise ConfigError("irc.access_mode must be owner or authenticated")
+
+    raw_channels = table.get("channels")
+    if not isinstance(raw_channels, list) or not raw_channels:
+        raise ConfigError("irc.channels must contain at least one channel")
+    channels: list[str] = []
+    for value in raw_channels:
+        if not isinstance(value, str) or not re.fullmatch(r"#[^\x00\x07\r\n ,:]{1,80}", value):
+            raise ConfigError(f"invalid IRC channel: {value!r}")
+        if value.lower() not in {item.lower() for item in channels}:
+            channels.append(value)
+
+    return IRCConfig(
+        server=server,
+        port=port,
+        nick=nick,
+        account=account,
+        password_env=password_env,
+        password=password,
+        owner_account=owner_account,
+        access_mode=access_mode,
+        channels=tuple(channels),
+        reconnect_initial_seconds=_number(
+            table, "reconnect_initial_seconds", "irc", default=2, minimum=0.25
+        ),
+        reconnect_max_seconds=_number(
+            table, "reconnect_max_seconds", "irc", default=60, minimum=1
+        ),
+    )
+
+
+def _load_limits(raw: dict) -> LimitsConfig:
+    table = raw.get("limits", {})
+    if not isinstance(table, dict):
+        raise ConfigError("[limits] must be a table")
+    return LimitsConfig(
+        requests_per_minute=_integer(
+            table, "requests_per_minute", "limits", default=6, maximum=120
+        ),
+        max_prompt_bytes=_integer(
+            table, "max_prompt_bytes", "limits", default=2048, maximum=65536
+        ),
+        max_output_bytes=_integer(
+            table, "max_output_bytes", "limits", default=4096, maximum=65536
+        ),
+        max_output_lines=_integer(
+            table, "max_output_lines", "limits", default=15, maximum=100
+        ),
+        irc_payload_bytes=_integer(
+            table,
+            "irc_payload_bytes",
+            "limits",
+            default=300,
+            minimum=128,
+            maximum=430,
+        ),
+        max_concurrent_requests=_integer(
+            table, "max_concurrent_requests", "limits", default=2, maximum=16
+        ),
+        max_pending_requests=_integer(
+            table, "max_pending_requests", "limits", default=16, maximum=256
+        ),
+    )
+
+
+def _load_health(raw: dict) -> HealthConfig:
+    table = raw.get("health", {})
+    if not isinstance(table, dict):
+        raise ConfigError("[health] must be a table")
+    path = table.get("heartbeat_path", "/tmp/compute-bot-heartbeat")
+    if not isinstance(path, str) or not path.startswith("/") or "\0" in path:
+        raise ConfigError("health.heartbeat_path must be an absolute path")
+    return HealthConfig(
+        heartbeat_path=path,
+        heartbeat_interval_seconds=_number(
+            table, "heartbeat_interval_seconds", "health", default=15, minimum=2
+        ),
+    )
+
+
+def _load_community(raw: dict, environ: Mapping[str, str]) -> CommunityConfig:
+    table = raw.get("community")
+    if not isinstance(table, dict):
+        raise ConfigError("bot configuration requires a [community] table")
+    portal_url = _required_string(table, "portal_url", "community").rstrip("/")
+    parsed = urlparse(portal_url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ConfigError("community.portal_url must be an HTTP(S) URL")
+    internal_token_env = _required_string(
+        table, "internal_token_env", "community"
+    )
+    internal_token = environ.get(internal_token_env, "")
+    if not internal_token:
+        raise ConfigError(
+            "required community secret environment variable is unset: "
+            f"{internal_token_env}"
+        )
+    return CommunityConfig(
+        portal_url=portal_url,
+        internal_token_env=internal_token_env,
+        internal_token=internal_token,
+        agent_timeout_seconds=_number(
+            table, "agent_timeout_seconds", "community", default=120, minimum=5
+        ),
+    )
+
+
+def _load_models(raw: dict, environ: Mapping[str, str]) -> Mapping[str, ModelConfig]:
+    tables = raw.get("models")
+    if not isinstance(tables, dict) or not tables:
+        raise ConfigError("models configuration requires at least one [models.NAME] table")
+
+    result: dict[str, ModelConfig] = {}
+    for name, table in tables.items():
+        context = f"models.{name}"
+        if not isinstance(name, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._-]{0,63}", name):
+            raise ConfigError(f"invalid model registry name: {name!r}")
+        if not isinstance(table, dict):
+            raise ConfigError(f"{context} must be a table")
+
+        endpoint = _required_string(table, "endpoint", context).rstrip("/")
+        parsed = urlparse(endpoint)
+        if (
+            parsed.scheme not in {"http", "https"}
+            or not parsed.hostname
+            or parsed.query
+            or parsed.fragment
+            or not parsed.path.endswith("/v1")
+        ):
+            raise ConfigError(f"{context}.endpoint must be an HTTP(S) base URL ending in /v1")
+
+        api_key_env = _required_string(table, "api_key_env", context)
+        api_key = environ.get(api_key_env, "")
+        if not api_key:
+            raise ConfigError(f"required model secret environment variable is unset: {api_key_env}")
+        description = _required_string(table, "description", context)
+        if len(description.encode("utf-8")) > 300:
+            raise ConfigError(f"{context}.description is too long")
+
+        model_id = table.get("model_id", name)
+        if not isinstance(model_id, str) or not model_id.strip() or any(
+            char in model_id for char in "\r\n\0"
+        ):
+            raise ConfigError(f"{context}.model_id must be a non-empty string")
+
+        result[name] = ModelConfig(
+            name=name,
+            model_id=model_id.strip(),
+            endpoint=endpoint,
+            api_key_env=api_key_env,
+            api_key=api_key,
+            max_tokens=_integer(table, "max_tokens", context, default=512, maximum=131072),
+            min_max_tokens=_integer(
+                table, "min_max_tokens", context, default=1, maximum=131072
+            ),
+            description=description,
+            timeout_seconds=_number(
+                table, "timeout_seconds", context, default=120, minimum=1
+            ),
+        )
+    return MappingProxyType(result)
+
+
+def load_config(
+    bot_path: str | Path,
+    models_path: str | Path,
+    environ: Mapping[str, str] | None = None,
+) -> AppConfig:
+    environment = os.environ if environ is None else environ
+    bot_raw = _read_toml(bot_path)
+    models_raw = _read_toml(models_path)
+    logging_table = bot_raw.get("logging", {})
+    if not isinstance(logging_table, dict):
+        raise ConfigError("[logging] must be a table")
+    log_level = logging_table.get("level", "INFO")
+    if log_level not in {"DEBUG", "INFO", "WARNING", "ERROR"}:
+        raise ConfigError("logging.level must be DEBUG, INFO, WARNING, or ERROR")
+    return AppConfig(
+        irc=_load_irc(bot_raw, environment),
+        limits=_load_limits(bot_raw),
+        health=_load_health(bot_raw),
+        community=_load_community(bot_raw, environment),
+        models=_load_models(models_raw, environment),
+        log_level=log_level,
+    )

@@ -12,6 +12,12 @@ services:
       - --conf
       - /ircd/ircd.yaml
     ports:
+      # The host-networked BotHerder is the only intended host consumer.
+      - name: bot-herder-irc
+        target: 6667
+        published: "6667"
+        host_ip: 127.0.0.1
+        protocol: tcp
       # Tailscale Funnel is the only intended consumer of this listener.
       - name: funnel-backend
         target: 6668
@@ -44,6 +50,118 @@ services:
       - no-new-privileges:true
     cap_drop:
       - ALL
+    networks:
+      - irc
+
+  bot-herder:
+    image: omen-irc-bot-herder:2.0.0
+    build:
+      context: ./services/compute-bot
+      target: runtime
+    init: true
+    restart: unless-stopped
+    depends_on:
+      ergo:
+        condition: service_healthy
+      community-portal:
+        condition: service_healthy
+    # AM4's models listen on host loopback. Host networking lets the bot reach
+    # both the model and Ergo without broadening UFW or fixing a bridge subnet.
+    network_mode: host
+    env_file:
+      - /etc/omen-irc/compute-bot.env
+      # Contains only COMMUNITY_INTERNAL_TOKEN. Registrar, operator,
+      # credential-encryption, and portal-admin secrets stay portal-only.
+      - /etc/omen-irc/bot-herder.env
+    volumes:
+      - type: bind
+        source: /opt/omen-irc/config/compute-bot/bot.toml
+        target: /etc/compute-bot/bot.toml
+        read_only: true
+      - type: bind
+        source: /opt/omen-irc/config/compute-bot/models.toml
+        target: /etc/compute-bot/models.toml
+        read_only: true
+      - type: bind
+        source: /var/lib/omen-irc/bot-herder/runtime
+        target: /var/lib/bot-herder
+      - type: bind
+        source: /var/lib/omen-irc/bot-herder/members
+        target: /var/lib/bot-herder/members
+        read_only: true
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=4m,uid=1000,gid=1000,mode=0700
+    user: "1000:1000"
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -m
+        - compute_bridge.healthcheck
+        - --path
+        - /tmp/bot-herder-heartbeat
+        - --max-age
+        - "50"
+      interval: 15s
+      timeout: 4s
+      retries: 4
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 1.0
+
+  community-portal:
+    image: omen-irc-community-portal:1.0.0
+    build:
+      context: ./services/community-portal
+    init: true
+    restart: unless-stopped
+    depends_on:
+      ergo:
+        condition: service_healthy
+      thelounge:
+        condition: service_healthy
+    ports:
+      # Tailscale Funnel publishes only /join; this backend stays on loopback.
+      - name: join-portal
+        target: 9010
+        published: "9010"
+        host_ip: 127.0.0.1
+        protocol: tcp
+    env_file:
+      - /etc/omen-irc/community.env
+    volumes:
+      - type: bind
+        source: /var/lib/omen-irc/community
+        target: /var/lib/community
+      - type: bind
+        source: /var/lib/omen-irc/bot-herder/members
+        target: /var/lib/bot-herder/members
+      - type: bind
+        source: /var/lib/omen-irc/thelounge
+        target: /var/opt/thelounge
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=16m,uid=1000,gid=1000,mode=0700
+    user: "1000:1000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:9010/health"]
+      interval: 10s
+      timeout: 4s
+      retries: 12
+      start_period: 10s
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 64
+    mem_limit: 256m
+    cpus: 0.5
     networks:
       - irc
 

@@ -17,9 +17,12 @@ loopback-only backend so Ergo can retain the original client address.
 | Path | Purpose |
 |---|---|
 | `/opt/omen-irc` | Compose file, readable templates, scripts, and MOTD |
-| `/etc/omen-irc` | Generated Ergo configuration and bootstrap secrets |
+| `/etc/omen-irc` | Generated Ergo configuration and root-only IRC/bot secrets |
 | `/var/lib/omen-irc/ergo` | Accounts, channels, history |
 | `/var/lib/omen-irc/thelounge` | The Lounge users and browser-client state |
+| `/var/lib/omen-irc/community` | One-time invitation registry and encrypted retry envelopes |
+| `/var/lib/omen-irc/bot-herder/members` | Read-only-at-runtime per-member Herder records |
+| `/var/lib/omen-irc/bot-herder/runtime` | BotHerder operational metrics |
 | `/var/backups/omen-irc` | Timestamped, sensitive backup archives |
 
 The public endpoint is:
@@ -31,13 +34,19 @@ Tailscale Funnel TLS :8443
 ```
 
 The Lounge reaches `ergo:6667` only over the private Compose network. Its web UI
-is bound to `127.0.0.1:9000`; use an operator SSH tunnel:
+is bound to `127.0.0.1:9000` and published with trusted HTTPS at:
 
 ```text
-ssh -L 9000:127.0.0.1:9000 am4
+https://am4.tail8e749c.ts.net:10000/
 ```
 
-Then browse to `http://127.0.0.1:9000`.
+The one-time portal is bound to `127.0.0.1:9010` and additively published at
+`https://am4.tail8e749c.ts.net/join/`. AM4's gallery remains at `/`.
+
+BotHerder uses host networking so it can reach both
+`127.0.0.1:6667` (the loopback-only Ergo publication) and the existing
+`127.0.0.1:8082/v1` model endpoint without a Docker-subnet UFW exception.
+This does not change the public Funnel path.
 
 ## Install or rerun
 
@@ -46,9 +55,18 @@ From AM4:
 ```bash
 sudo /opt/omen-irc/scripts/bootstrap-am4.sh
 sudo /opt/omen-irc/scripts/check-am4.sh --require-funnel
+sudo python3 /opt/omen-irc/scripts/acceptance-compute-bot-am4.py
+sudo python3 /opt/omen-irc/scripts/acceptance-community-am4.py
 ```
 
 Bootstrap is rerunnable. It reuses existing secrets and databases.
+
+Provision or repair community onboarding and BotHerder with:
+
+```bash
+sudo /opt/omen-irc/scripts/provision-compute-bot-am4.sh
+sudo /opt/omen-irc/scripts/check-compute-bot-am4.sh
+```
 
 Enable only the additive IRC Funnel entry:
 
@@ -61,6 +79,15 @@ sudo tailscale funnel --bg --yes \
 
 Never use `tailscale funnel reset`; AM4's existing HTTPS Funnel on port 443
 serves the image gallery.
+
+The additive browser publications are:
+
+```bash
+sudo tailscale funnel --bg --yes --https=10000 \
+  http://127.0.0.1:9000
+sudo tailscale funnel --bg --yes --set-path=/join \
+  http://127.0.0.1:9010
+```
 
 ## Service management
 
@@ -81,12 +108,10 @@ sudo /home/derek/.docker/cli-plugins/docker-compose \
   -f compose.am4.yaml logs --tail 100
 ```
 
-Add a personal Lounge user without creating a shared password:
+Create an invitation; redemption creates the Lounge profile automatically:
 
-```bash
-cd /opt/omen-irc
-sudo /home/derek/.docker/cli-plugins/docker-compose \
-  -f compose.am4.yaml exec thelounge thelounge add alice
+```powershell
+.\scripts\invite-community.ps1 -DisplayName "Alice"
 ```
 
 ## Backup and restore

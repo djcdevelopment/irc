@@ -1,5 +1,12 @@
 # Worker Brief — IRC Compute-Bridge Bot (Phase 1)
 
+> Historical implementation brief. It records the original Phase 1 target,
+> not the current production topology. The deployed system uses one
+> owner-scoped BotHerder per member, public trusted TLS through Tailscale
+> Funnel on port 8443, a one-time onboarding portal, and outbound remote-agent
+> adapters. See [COMPUTE-BOT.md](COMPUTE-BOT.md) and
+> [COMMUNITY-ONBOARDING.md](COMMUNITY-ONBOARDING.md).
+
 ## Objective
 Add a bot to the AM4 IRC network that lets **authenticated** members run local LLM
 inference from chat. The bot is the bridge between the IRC social layer and the local

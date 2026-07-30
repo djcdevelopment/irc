@@ -112,6 +112,14 @@ channels:
     invite-expiration: 24h
 
 oper-classes:
+    # Used only by the internal onboarding portal. It can create and suspend
+    # accounts, but cannot kill, ban, rehash, inspect history, or administer
+    # channels.
+    account-registrar:
+        title: Community Account Registrar
+        capabilities:
+            - accreg
+            - ban
     server-admin:
         title: Server Administrator
         capabilities:
@@ -133,6 +141,11 @@ oper-classes:
             - metadata
 
 opers:
+    community-registrar:
+        class: account-registrar
+        hidden: true
+        whois-line: is the automated community account registrar
+        password: "@@REGISTRAR_OPER_PASSWORD_HASH@@"
     admin:
         class: server-admin
         hidden: true

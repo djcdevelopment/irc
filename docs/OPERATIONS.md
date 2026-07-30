@@ -22,19 +22,41 @@ sudo /home/derek/.docker/cli-plugins/docker-compose -f compose.am4.yaml logs --t
 # configuration and service validation
 sudo /opt/omen-irc/scripts/check-am4.sh --require-funnel
 sudo /opt/omen-irc/scripts/check-am4.sh --require-funnel --persistence
+sudo /opt/omen-irc/scripts/check-compute-bot-am4.sh
+sudo python3 /opt/omen-irc/scripts/acceptance-community-am4.py
 ```
 
-Add a personal The Lounge user interactively:
+Create a one-time community invitation from Windows:
+
+```powershell
+.\scripts\invite-community.ps1 -DisplayName "Alice"
+```
+
+Redemption creates personal Ergo and Lounge accounts, an internal network, and
+the member's chosen BotHerder. The browser lobby is
+`https://am4.tail8e749c.ts.net:10000/`.
+
+Provision or repair the portal and BotHerder supervisor:
 
 ```bash
-cd /opt/omen-irc
-sudo /home/derek/.docker/cli-plugins/docker-compose \
-  -f compose.am4.yaml exec thelounge thelounge add alice
+sudo /opt/omen-irc/scripts/provision-compute-bot-am4.sh
+sudo /opt/omen-irc/scripts/check-compute-bot-am4.sh
 ```
 
-Then create an SSH tunnel with
-`ssh -L 9000:127.0.0.1:9000 am4` and browse to
-`http://127.0.0.1:9000`.
+Run its live acceptance suite:
+
+```bash
+sudo python3 /opt/omen-irc/scripts/acceptance-compute-bot-am4.py
+```
+
+The disruptive model stop/restart test is documented in
+[COMPUTE-BOT.md](COMPUTE-BOT.md) and should run only during a maintenance
+window.
+
+Add or update models in `/opt/omen-irc/config/compute-bot/models.toml`, put
+their named API-key variables in root-only
+`/etc/omen-irc/compute-bot.env`, then recreate `bot-herder`. Model URLs and
+keys are never supplied from IRC.
 
 Create Ergo accounts and channels from an authenticated operator session:
 
@@ -46,6 +68,9 @@ Create Ergo accounts and channels from an authenticated operator session:
 ```
 
 The operator password is stored only in `/etc/omen-irc/bootstrap.json`.
+The initial `admin` Lounge login uses `AdminAccount` and `AdminPassword` from
+that file. `OperPassword` is not a Lounge or SASL credential. Community
+provisioning verifies this profile on every rerun.
 
 Back up AM4:
 
@@ -65,6 +90,16 @@ Update pinned images only after reading both projects' release notes:
 4. Recreate with `docker compose up -d --wait`.
 5. Run the full persistence check.
 
+For BotHerder, build its test target before recreating the runtime image:
+
+```bash
+sudo docker build --target test \
+  -t omen-irc-bot-herder:test /opt/omen-irc/services/compute-bot
+cd /opt/omen-irc
+sudo /home/derek/.docker/cli-plugins/docker-compose \
+  -f compose.am4.yaml up -d --build bot-herder
+```
+
 Rollback an image update by restoring the pre-update archive and exact old
 tags. Do not point an older Ergo image at a database upgraded by a newer image
 unless the release notes explicitly allow it.
@@ -80,6 +115,14 @@ updating both root-only files under `/etc/omen-irc`, and restarting Ergo. Confir
 the new password works and the old one fails. Public TLS certificates are
 managed by Funnel; no private certificate is stored by this stack on AM4.
 
+Rotate the primary bot SASL password by changing `DereksBotHerder` through an
+operator-controlled recovery session, atomically replacing
+`IRC_BOT_PASSWORD` in `/etc/omen-irc/compute-bot.env`, and recreating
+`bot-herder`.
+Rotate a model key at its endpoint first, update the corresponding env
+variable, recreate the bot, and verify that the old key fails. Do not print
+either value.
+
 Disable only IRC publication without disturbing the gallery:
 
 ```bash
@@ -87,6 +130,13 @@ sudo tailscale funnel --tls-terminated-tcp=8443 off
 ```
 
 Do not use `tailscale funnel reset`.
+
+Disable browser onboarding independently:
+
+```bash
+sudo tailscale funnel --https=10000 off
+sudo tailscale funnel --set-path=/join off
+```
 
 Remove containers and their private network without deleting state:
 

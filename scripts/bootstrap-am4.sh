@@ -59,6 +59,10 @@ tailscale_hostname="$(
 
 step "Creating protected configuration and state directories"
 install -d -m 0755 "$state_dir/ergo" "$state_dir/thelounge"
+install -d -o 1000 -g 1000 -m 0700 \
+    "$state_dir/community" \
+    "$state_dir/bot-herder" \
+    "$state_dir/bot-herder/members"
 install -d -m 0700 "$config_dir"
 install -d -m 0700 /var/backups/omen-irc
 
@@ -94,6 +98,9 @@ PY
 fi
 chmod 0600 "$secrets_file"
 
+"$project_dir/scripts/provision-compute-bot-am4.sh" --secrets-only
+"$project_dir/scripts/provision-community-am4.sh" --secrets-only
+
 mapfile -t local_secrets < <(
     python3 - "$secrets_file" <<'PY'
 import json
@@ -115,7 +122,7 @@ admin_account="${local_secrets[2]}"
 admin_password="${local_secrets[3]}"
 
 step "Pulling pinned official images"
-"${compose[@]}" -f "$compose_file" pull
+"${compose[@]}" -f "$compose_file" pull ergo thelounge
 
 if [[ ! -s "$config_file" ]]; then
     step "Rendering protected Ergo configuration"
@@ -126,10 +133,23 @@ if [[ ! -s "$config_file" ]]; then
             tail -n 1
     )"
     [[ "$oper_hash" == '$2'* ]] || die "Ergo did not return a bcrypt hash"
+    registrar_oper_password="$(
+        sed -n 's/^COMMUNITY_REGISTRAR_OPER_PASSWORD=//p' \
+            "$config_dir/community.env"
+    )"
+    registrar_oper_hash="$(
+        printf '%s\n' "$registrar_oper_password" |
+            docker run --rm -i --entrypoint /ircd-bin/ergo \
+                "$ergo_image" genpasswd --quiet |
+            tail -n 1
+    )"
+    [[ "$registrar_oper_hash" == '$2'* ]] ||
+        die "Ergo did not return a registrar bcrypt hash"
     rendered="$(<"$project_dir/config/ergo/ircd.am4.template.yaml")"
     rendered="${rendered//@@NETWORK_NAME@@/OmenPrivateIRC}"
     rendered="${rendered//@@SERVER_NAME@@/$tailscale_hostname}"
     rendered="${rendered//@@OPER_PASSWORD_HASH@@/$oper_hash}"
+    rendered="${rendered//@@REGISTRAR_OPER_PASSWORD_HASH@@/$registrar_oper_hash}"
     umask 077
     printf '%s\n' "$rendered" >"$config_file"
 fi
@@ -145,6 +165,7 @@ lounge_uid="$(
 )"
 chown -R "$ergo_uid:$ergo_uid" "$state_dir/ergo"
 chown -R "$lounge_uid:$lounge_uid" "$state_dir/thelounge"
+chown -R 1000:1000 "$state_dir/community" "$state_dir/bot-herder"
 find "$state_dir/ergo" -type d -exec chmod 0700 {} +
 find "$state_dir/ergo" -type f -exec chmod 0600 {} +
 find "$state_dir/thelounge" -type d -exec chmod 0700 {} +
@@ -228,9 +249,11 @@ if [[ "$database_was_present" == false ]]; then
 fi
 
 step "Running AM4 checks"
+"$project_dir/scripts/provision-community-am4.sh"
 "$project_dir/scripts/check-am4.sh"
 
 printf '\nAM4 private backend is ready.\n'
 printf 'Public IRC after Funnel enablement: %s:8443 (TLS)\n' "$tailscale_hostname"
-printf 'The Lounge (operator SSH tunnel): ssh -L 9000:127.0.0.1:9000 am4\n'
+printf 'The Lounge: https://%s:10000/\n' "$tailscale_hostname"
+printf 'One-time join portal: https://%s/join/\n' "$tailscale_hostname"
 printf 'Secrets remain only in %s (mode 0600).\n' "$secrets_file"

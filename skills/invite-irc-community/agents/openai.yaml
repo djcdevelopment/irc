@@ -1,0 +1,4 @@
+interface:
+  display_name: "Invite to IRC Community"
+  short_description: "Create a one-time AM4 community join link"
+  default_prompt: "Use $invite-irc-community to create a private one-time join link for my friend."

@@ -1,0 +1,32 @@
+[irc]
+server = "127.0.0.1"
+port = 6667
+nick = "DereksBotHerder"
+account = "DereksBotHerder"
+password_env = "IRC_BOT_PASSWORD"
+owner_account = "admin"
+access_mode = "owner"
+channels = ["#general", "#ops"]
+reconnect_initial_seconds = 2
+reconnect_max_seconds = 60
+
+[community]
+portal_url = "http://127.0.0.1:9010"
+internal_token_env = "COMMUNITY_INTERNAL_TOKEN"
+agent_timeout_seconds = 120
+
+[limits]
+requests_per_minute = 6
+max_prompt_bytes = 2048
+max_output_bytes = 4096
+max_output_lines = 15
+irc_payload_bytes = 360
+max_concurrent_requests = 2
+max_pending_requests = 16
+
+[health]
+heartbeat_path = "/tmp/bot-herder-heartbeat"
+heartbeat_interval_seconds = 15
+
+[logging]
+level = "INFO"

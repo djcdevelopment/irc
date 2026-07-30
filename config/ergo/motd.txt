@@ -1,9 +1,10 @@
 Welcome to Omen Private IRC.
 
-This is a small private community network reachable only through the tailnet.
-Authenticate with your personal Ergo account using SASL. Do not share account
-or operator passwords. Start in #general; infrastructure notices are in #ops.
+This is a small, account-private community network. Public access is available
+only through the managed TLS endpoints; every IRC connection still requires a
+personal SASL account. Do not share account or operator passwords. Start in
+#general; infrastructure notices are in #ops.
 
 History is retained for 30 days on registered channels. Contact the network
-operator if you need an account, access recovery, or help trusting the TLS
-certificate.
+operator if you need an invitation or account recovery. Current clients should
+use am4.tail8e749c.ts.net:8443 with TLS certificate verification enabled.

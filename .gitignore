@@ -1,6 +1,7 @@
 # Local deployment parameters and generated credentials
 .env
 .secrets/
+*.env
 
 # Generated Ergo configuration contains the operator password hash
 config/ergo/ircd.yaml
@@ -23,6 +24,8 @@ backups/
 *.tmp
 *.bak
 *.log
+__pycache__/
+*.py[cod]
 .DS_Store
 Thumbs.db
 .idea/

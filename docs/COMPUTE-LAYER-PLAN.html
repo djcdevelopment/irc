@@ -57,6 +57,10 @@
   <div class="sub">2026-07-30 · builds on <code>c:\work\irc</code> (Ergo + The Lounge, deployed &amp; hardened today) · compute layer greenfield, bolts onto HEARTH</div>
 </header>
 
+<div class="panel">
+  <p><b>Historical planning artifact.</b> This page preserves the design exploration that preceded implementation. The current production system uses public trusted TLS on port 8443, a one-time onboarding portal, one owner-scoped BotHerder per member, and outbound remote-agent adapters. Current operating documentation is in <a href="COMMUNITY-ONBOARDING.md">COMMUNITY-ONBOARDING.md</a> and <a href="COMPUTE-BOT.md">COMPUTE-BOT.md</a>.</p>
+</div>
+
 <div class="panel verdict">
   <p><b>The substrate is done; only the interesting part is left.</b> The IRC community — Ergo (server) + The Lounge (web client), TLS on the tailnet, SASL, closed registration, hardened containers, <code>#general</code>/<code>#ops</code>, backups — is <b>already deployed</b>. The "GOAT" feature you reached for (always-on presence, backlog, multi-device reattach) is provided by <b>Ergo natively</b>; <code>QUASSEL.md</code> already refused a Quassel Core for that reason. Nothing to rebuild there. <b>The single greenfield gap is the compute bridge</b>: chat → governed inference. It maps 1:1 onto HEARTH, which already owns model endpoints, caller-profiles, scheduling, and the ledger.</p>
 </div>

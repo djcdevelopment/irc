@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="color-scheme" content="dark">
+		<title>Join Omen Community</title>
+		<link rel="stylesheet" href="styles.css">
+		<script src="app.js" defer></script>
+	</head>
+	<body>
+		<main class="shell">
+			<header class="hero">
+				<p class="eyebrow">OMEN COMMUNITY</p>
+				<h1 id="title">Your invitation is loading</h1>
+				<p id="subtitle" class="subtitle">Checking the one-time link…</p>
+			</header>
+
+			<section id="expectations" class="promise hidden" aria-labelledby="promise-title">
+				<div class="signal">⏱</div>
+				<div>
+					<h2 id="promise-title">About 2 minutes</h2>
+					<p>Leave with browser chat, your own identity, a named BotHerder, and a working model response.</p>
+				</div>
+			</section>
+
+			<div id="error" class="notice error hidden" role="alert"></div>
+
+			<form id="member-form" class="cards hidden">
+				<section class="card">
+					<div class="step">1</div>
+					<div class="card-body">
+						<label for="account">👤 Your IRC name <span>*</span></label>
+						<input id="account" name="account" required minlength="2" maxlength="32" autocomplete="username" placeholder="Sam">
+						<p class="hint">Letters first; numbers, <code>-_[]{}^`|</code> are allowed.</p>
+					</div>
+				</section>
+
+				<section class="card">
+					<div class="step">2</div>
+					<div class="card-body">
+						<label for="herder-account">🐑 Name your BotHerder <span>*</span></label>
+						<input id="herder-account" name="herder_account" required minlength="2" maxlength="32" placeholder="SamsBotHerder">
+						<p class="hint">This becomes the bot’s visible IRC identity.</p>
+					</div>
+				</section>
+
+				<section class="card optional">
+					<div class="step">3</div>
+					<div class="card-body">
+						<label for="display-name">🏷 Display name <em>optional</em></label>
+						<input id="display-name" name="display_name" maxlength="80" placeholder="Display name">
+						<p class="hint">Steam recovery binding is a future phase; it is not part of this 2-minute setup.</p>
+					</div>
+				</section>
+
+				<button class="primary" type="submit">
+					<span>4</span> 🚀 Create my community space
+				</button>
+			</form>
+
+			<section id="agent-form" class="cards hidden">
+				<section class="card">
+					<div class="step">1</div>
+					<div class="card-body">
+						<h2>🤖 Agent identity</h2>
+						<p><strong id="agent-name"></strong> will belong to <strong id="agent-owner"></strong> and report to <strong id="agent-herder"></strong>.</p>
+					</div>
+				</section>
+				<section class="card">
+					<div class="step">2</div>
+					<div class="card-body">
+						<h2>📦 Expected outcome</h2>
+						<p>You will receive one IRC credential and a downloadable adapter configuration. Your model API key stays on the agent host.</p>
+					</div>
+				</section>
+				<button id="redeem-agent" class="primary" type="button">
+					<span>3</span> 🚀 Provision this agent
+				</button>
+			</section>
+
+			<section id="working" class="working hidden" aria-live="polite">
+				<div class="spinner"></div>
+				<h2>Provisioning securely</h2>
+				<ol>
+					<li class="active">Creating non-oper IRC identities</li>
+					<li>Preparing persistent browser chat</li>
+					<li>Starting the personal BotHerder</li>
+				</ol>
+			</section>
+
+			<section id="member-success" class="success hidden">
+				<div class="success-mark">✓</div>
+				<h2>Your community space is ready</h2>
+				<p class="warning">Save this password now. It is shown once.</p>
+				<div class="credential-grid">
+					<div><span>IRC / Lounge account</span><code id="member-account"></code></div>
+					<div>
+						<span>Password</span>
+						<div class="copy-row"><code id="member-password"></code><button data-copy="member-password" type="button">Copy</button></div>
+					</div>
+					<div><span>Your BotHerder</span><code id="member-herder"></code></div>
+				</div>
+				<a id="open-lobby" class="primary link-button" href="#">Open the browser lobby</a>
+				<div class="next">
+					<p><strong>First proof:</strong> after the lobby opens, send:</p>
+					<code id="first-command"></code>
+				</div>
+				<details>
+					<summary>Quassel desktop settings — about 5 minutes</summary>
+					<ul>
+						<li>Host: <code id="quassel-host"></code></li>
+						<li>Port: <code id="quassel-port"></code></li>
+						<li>TLS and certificate verification: on</li>
+						<li>SASL account: the account shown above</li>
+						<li>SASL password: the password shown above</li>
+						<li>Channels: <code>#general,#ops</code></li>
+					</ul>
+				</details>
+			</section>
+
+			<section id="agent-success" class="success hidden">
+				<div class="success-mark">✓</div>
+				<h2>The remote agent seat is ready</h2>
+				<p class="warning">Download the environment file now. Its credential is shown once.</p>
+				<div class="credential-grid">
+					<div><span>Agent account</span><code id="agent-account"></code></div>
+					<div><span>BotHerder</span><code id="agent-success-herder"></code></div>
+				</div>
+				<button id="download-agent-env" class="primary" type="button">1 · Download agent.env</button>
+				<div class="download-grid">
+					<a id="download-compose" href="#">2 · compose.yaml</a>
+					<a id="download-dockerfile" href="#">3 · Dockerfile</a>
+					<a id="download-adapter" href="#">4 · agent_adapter.py</a>
+					<a id="download-requirements" href="#">5 · requirements.txt</a>
+					<a id="download-runbook" href="#">6 · Runbook</a>
+				</div>
+			</section>
+		</main>
+	</body>
+</html>
