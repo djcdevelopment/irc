@@ -404,11 +404,8 @@ class BotHerder:
             return next(iter(self.config.models.values()))
         return None
 
-    async def _find_agent(self, name: str) -> dict | None:
-        try:
-            agents = await self._get_agents()
-        except PortalError:
-            return None
+    @staticmethod
+    def _match_agent(agents: list[dict], name: str) -> dict | None:
         return next(
             (
                 item
@@ -419,6 +416,31 @@ class BotHerder:
             ),
             None,
         )
+
+    async def _find_agent(self, name: str) -> dict | None:
+        try:
+            match = self._match_agent(await self._get_agents(), name)
+            if match is None:
+                # A cached list can predate an agent redeemed moments ago
+                # (anything touching the cache races provisioning), so a miss
+                # is only a miss after a fresh read.
+                match = self._match_agent(
+                    await self._get_agents(refresh=True), name
+                )
+        except PortalError as exc:
+            LOGGER.warning(
+                "agent_lookup_unavailable herder=%s error=%s",
+                self.config.irc.account,
+                str(exc),
+            )
+            return None
+        if match is None:
+            LOGGER.warning(
+                "agent_not_found herder=%s name=%s",
+                self.config.irc.account,
+                name,
+            )
+        return match
 
     def _addressed_command(self, text: str) -> str | None:
         clean = text.strip()
@@ -1379,16 +1401,28 @@ class BotHerder:
             )
 
     async def _handle_agent_protocol(self, account: str, text: str) -> None:
+        def active(agents: list[dict]) -> set[str]:
+            return {
+                item["account"].casefold()
+                for item in agents
+                if item["state"] == "active"
+            }
+
         try:
-            agents = await self._get_agents()
+            active_accounts = active(await self._get_agents())
+            if account.casefold() not in active_accounts:
+                # Never distrust an authenticated agent on a cached list
+                # alone: its registration may be seconds old.
+                active_accounts = active(await self._get_agents(refresh=True))
         except PortalError:
             return
-        active_accounts = {
-            item["account"].casefold()
-            for item in agents
-            if item["state"] == "active"
-        }
         if account.casefold() not in active_accounts:
+            LOGGER.warning(
+                "agent_protocol_unrecognized herder=%s account=%s known=%d",
+                self.config.irc.account,
+                account,
+                len(active_accounts),
+            )
             return
         if self.metrics:
             self.metrics.agent_seen(account, self.config.irc.account)

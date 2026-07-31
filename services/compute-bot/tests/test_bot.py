@@ -826,6 +826,37 @@ class BotStorefrontPresentationTests(unittest.IsolatedAsyncioTestCase):
             "https://portal.invalid/lab/edit#token123", self.replies[0][1]
         )
 
+    async def test_agent_lookup_refreshes_a_stale_cache_on_miss(self):
+        # Live race: the registrar's provisioning session joins the storefront
+        # channel, the greet check primes the agents cache, and the agent is
+        # redeemed milliseconds later. A cached miss must trigger a fresh
+        # read or the new agent's HELLO and first !ask fall through.
+        calls = {"count": 0}
+        agent = {
+            "account": "Alice-scout",
+            "display_name": "scout",
+            "state": "active",
+        }
+
+        class FakePortal:
+            async def agents(self, owner_account, herder_account):
+                calls["count"] += 1
+                return [agent]
+
+        self.bot.portal = FakePortal()
+        self.bot._agents_cache = (time.monotonic(), [])
+        found = await self.bot._find_agent("scout")
+        self.assertEqual(found, agent)
+        self.assertEqual(calls["count"], 1, "the stale cache was trusted")
+
+        self.bot._agents_cache = (time.monotonic(), [])
+        seen = []
+        self.bot.metrics = type(
+            "Metrics", (), {"agent_seen": lambda _self, *a: seen.append(a)}
+        )()
+        await self.bot._handle_agent_protocol("Alice-scout", "HERDER/1 HELLO")
+        self.assertEqual(len(seen), 1, "the redeemed agent's HELLO was dropped")
+
     async def test_trimmed_snapshot_is_capped_and_shaped(self):
         projection = {
             "providers": [
