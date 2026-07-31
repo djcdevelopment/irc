@@ -5,6 +5,10 @@ only through the managed TLS endpoints; every IRC connection still requires a
 personal SASL account. Do not share account or operator passwords. Start in
 #general; infrastructure notices are in #ops.
 
+Every member runs a personal AI laboratory. Type !browse in #general to tour
+the labs, or visit https://am4.tail8e749c.ts.net/lab/ in a browser. Your own
+lab: message your companion bot with "editlab" for a one-hour editor link.
+
 History is retained for 30 days on registered channels. Contact the network
 operator if you need an invitation or account recovery. Current clients should
 use am4.tail8e749c.ts.net:8443 with TLS certificate verification enabled.

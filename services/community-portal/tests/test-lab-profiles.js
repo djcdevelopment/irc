@@ -229,6 +229,23 @@ async function main() {
 			assert.equal(missing.status, 404, target);
 		}
 
+		// The gallery lists every lab and rings the doorbell.
+		for (const target of ["/lab", "/lab/"]) {
+			const gallery = await request("GET", target);
+			assert.equal(gallery.status, 200, target);
+			assert.match(gallery.body, /The Labs/);
+			assert.match(gallery.body, /href="\/lab\/neon-basement"/);
+			assert.match(gallery.body, /Neon Basement/);
+			assert.match(gallery.body, /membership is by invitation/);
+			assert.match(gallery.body, /href="\/guide\/"/);
+			assert.match(
+				gallery.headers.get("content-security-policy") || "",
+				/default-src 'none'/
+			);
+		}
+		// Every lab page carries the doorbell too.
+		assert.match(page.body, /membership is by invitation/);
+
 		// --- M2: HEARTH snapshot ingestion ----------------------------------
 		const snapshot = {
 			providers: [

@@ -671,6 +671,19 @@ function labSecurityHeaders(response, nonce) {
 	);
 }
 
+function serveLabGallery(response) {
+	const profiles = database
+		.prepare(
+			`SELECT lab_name, lab_slug, tagline, channel, visitors, created_at
+			 FROM storefront_profiles ORDER BY lab_name COLLATE NOCASE`
+		)
+		.all();
+	const nonce = crypto.randomBytes(16).toString("base64url");
+	labSecurityHeaders(response, nonce);
+	response.statusCode = 200;
+	response.end(lab.renderGalleryPage(profiles, {nonce}));
+}
+
 function serveLabPage(response, slug, address) {
 	let profile = getProfileBySlug(slug);
 	if (!profile) {
@@ -1948,6 +1961,9 @@ async function route(request, response) {
 			previous: oldHerder,
 			notes,
 		});
+	}
+	if (request.method === "GET" && (pathname === "/lab" || pathname === "/lab/")) {
+		return serveLabGallery(response);
 	}
 	if (request.method === "GET" && pathname.startsWith("/lab/")) {
 		const slug = pathname.slice(5).replace(/\/+$/, "").toLowerCase();

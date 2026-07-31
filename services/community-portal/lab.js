@@ -205,6 +205,57 @@ function truthPanel(snapshotRow, now) {
 	return parts.join("\n");
 }
 
+// Every public lab surface ends with a way in: the pages double as the
+// community's recruitment flyers.
+function doorbell() {
+	return (
+		'<p class="doorbell">want a lab like this? membership is by invitation — ' +
+		'<a href="/guide/">read the field guide</a> · ' +
+		'<a href="/lab/">tour the labs</a></p>'
+	);
+}
+
+function renderGalleryPage(profiles, {nonce}) {
+	const cards = profiles
+		.map(
+			(profile) =>
+				`<a class="gallery-card" href="/lab/${escapeHtml(profile.lab_slug)}">` +
+				`<span class="name">${escapeHtml(profile.lab_name)}</span>` +
+				(profile.tagline
+					? `<span class="tagline">${escapeHtml(profile.tagline)}</span>`
+					: "") +
+				`<span class="meta">${escapeHtml(profile.channel)} · ` +
+				`${Math.max(0, profile.visitors)} visitors · ` +
+				`est. ${escapeHtml(String(profile.created_at).slice(0, 10))}</span>` +
+				"</a>"
+		)
+		.join("\n");
+	return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>The Labs — Omen IRC</title>
+<link rel="stylesheet" href="/lab/lab.css">
+</head>
+<body class="lab gallery">
+<div class="crt">
+<header>
+<h1>The Labs</h1>
+<p class="tagline">every member runs one</p>
+</header>
+${
+	cards
+		? `<nav class="gallery-grid">\n${cards}\n</nav>`
+		: '<p class="stale">No labs are published yet.</p>'
+}
+<footer>an Omen IRC community${doorbell()}</footer>
+</div>
+</body>
+</html>
+`;
+}
+
 function renderLabPage(profile, snapshotRow, {nonce, now = Date.now()}) {
 	const theme = labTheme(profile);
 	const experiments = parseJsonOr(profile.experiments, []);
@@ -252,7 +303,7 @@ ${
 		: ""
 }
 ${truthPanel(snapshotRow, now)}
-<footer>irc: ${escapeHtml(profile.channel)} · an Omen IRC laboratory</footer>
+<footer>irc: ${escapeHtml(profile.channel)} · an Omen IRC laboratory${doorbell()}</footer>
 </div>
 </body>
 </html>
@@ -480,6 +531,7 @@ function validateProfilePatch(body) {
 module.exports = {
 	escapeHtml,
 	labTheme,
+	renderGalleryPage,
 	renderLabPage,
 	sanitizeSnapshot,
 	validateProfilePatch,
