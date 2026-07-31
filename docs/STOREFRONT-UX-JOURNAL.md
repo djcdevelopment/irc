@@ -1,6 +1,9 @@
 # DereksBotHerder storefront UX journal
 
-Status: living research record
+Status: living research record — observation period concluded 2026-07-31
+(see [Round 2026-07-31](#round-2026-07-31--first-real-session-and-owner-decision));
+the owner's Personal AI Storefronts specification resolved the deferred
+directions, and the retrospective's addendum records the scope change.
 Prototype: `#herder-derek`
 Primary participant: Derek
 Last updated: 2026-07-31
@@ -124,7 +127,25 @@ rewriting it.
 
 | ID | Date / session | Exact quote or observed action | What Derek was trying to do | Researcher interpretation: why it likely produced that reaction | Affected area | Unvalidated design direction | Confidence | Unresolved questions |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| _None yet_ |  |  |  |  |  |  |  |  |
+| O-001 | 2026-07-31 / S-001 | Quote: "I was really amused by how this OG early inet software is rock solid, simple to work with and plugs right into Agentic life." | Reflecting after exploring the deployed channel in Quassel | Delight is attached to the medium itself (IRC's solidity and agent fit), not only to the prototype's features | Place, identity | Lean into the medium: the early-internet frame is an asset, not nostalgia overhead | High | Does the delight persist past novelty? |
+| O-002 | 2026-07-31 / S-001 | Quote: "we also can't have every['s] agent handler called 'herder' they need to be able to express names, use ascii and colors" | Imagining other members' experience of the uniform naming | The uniform `#herder-<name>` / `<Name>sBotHerder` scheme reads as generic; ownership needs expressive identity | Identity, ownership | Owner-chosen names, ASCII, color as first-class identity carriers | High | Which identity surface (channel, nick, banner) carries the most ownership feeling? |
+| O-003 | 2026-07-31 / S-001 | Quote: "I'm not saying use color to use color, early mIRC might be some of the most elegant RGB text UX ever" | Qualifying how color should be used | The ask is for restrained, semantic color — palette discipline, not decoration | Presentation | A semantic palette (dim labels, state colors, one owner accent) rather than ornamental color | High | Does the implemented palette read as elegant in his client? |
+
+### Round 2026-07-31 — first real session and owner decision
+
+- Session ID: S-001
+- Client and device: Quassel IRC on OMEN (Windows)
+- Derek's goal on entering: exploring the deployed `#herder-derek`
+  prototype (`!about`, `!catalog`, `!hardware`, `!models`, `!agents`,
+  `!status`, `!help`)
+- Researcher involvement: none during the session; quotes were volunteered
+  immediately afterwards
+- Outcome: Derek followed the session with the Personal AI Storefronts
+  product design specification and explicit scope decisions (MVP slice;
+  full migration of user-visible "herder" naming; raw HTML deferred). Per
+  the study guardrails, that explicit owner request — not the observations
+  alone — is what authorized implementation. The observations above are
+  recorded for the design directions they ground.
 
 Do not combine separate reactions merely because they occurred during the
 same task. If the interpretation changes later, preserve the original entry

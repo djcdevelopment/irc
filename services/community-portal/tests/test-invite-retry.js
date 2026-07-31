@@ -140,7 +140,8 @@ async function main() {
 		);
 		const guideBody = await guide.text();
 		assert.match(guideBody, /BotHerder Field Guide/i);
-		assert.match(guideBody, /#herder-&lt;display-name&gt;/);
+		assert.match(guideBody, /#lab-&lt;your-lab&gt;/);
+		assert.match(guideBody, /editlab/);
 		assert.match(guideBody, /!catalog/);
 		assert.match(guideBody, /!artifacts/);
 		assert.match(guideBody, /!whohas &lt;capability&gt;/);
@@ -214,7 +215,7 @@ async function main() {
 		assert.deepEqual(renamed.body.channels, [
 			"#general",
 			"#ops",
-			"#herder-deej",
+			"#lab-deej",
 		]);
 		assert.equal(
 			ergo.registrations.filter((entry) => entry.account === "djm").length,
@@ -228,7 +229,7 @@ async function main() {
 		assert.equal(lounge.networks[0].saslPassword, renamed.body.password);
 		assert.deepEqual(
 			lounge.networks[0].channels.map((channel) => channel.name),
-			["#general", "#ops", "#herder-deej"]
+			["#general", "#ops", "#lab-deej"]
 		);
 		const herder = JSON.parse(
 			fs.readFileSync(
@@ -239,8 +240,9 @@ async function main() {
 		assert.deepEqual(herder.channels, [
 			"#general",
 			"#ops",
-			"#herder-deej",
+			"#lab-deej",
 		]);
+		assert.equal(herder.storefront_channel, "#lab-deej");
 		const storefronts = await get("/api/internal/storefronts", INTERNAL_TOKEN);
 		assert.equal(storefronts.status, 200);
 		assert.deepEqual(storefronts.body.storefronts, [
@@ -248,7 +250,12 @@ async function main() {
 				owner_account: "djmm",
 				display_name: "Deej",
 				herder_account: "djmmsBotHerder",
-				channel: "#herder-deej",
+				channel: "#lab-deej",
+				lab_name: "Deej",
+				lab_slug: "deej",
+				tagline: "",
+				web_url: "https://portal.invalid/lab/deej",
+				irc_accent: 11,
 				created_at: storefronts.body.storefronts[0].created_at,
 				agents: [],
 			},

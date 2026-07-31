@@ -160,10 +160,11 @@ else
 fi
 if grep -q '10000' <<<"$funnel_status" &&
     grep -q '/join' <<<"$funnel_status" &&
-    grep -q '/guide' <<<"$funnel_status"; then
-    pass "Tailscale Funnel publishes the browser lobby, /join, and /guide"
+    grep -q '/guide' <<<"$funnel_status" &&
+    grep -q '/lab' <<<"$funnel_status"; then
+    pass "Tailscale Funnel publishes the browser lobby, /join, /guide, and /lab"
 elif [[ "$require_funnel" == true ]]; then
-    fail "Tailscale Funnel does not show lobby port 10000, /join, and /guide"
+    fail "Tailscale Funnel does not show lobby port 10000, /join, /guide, and /lab"
 else
     warn "Funnel browser paths are not enabled yet"
 fi

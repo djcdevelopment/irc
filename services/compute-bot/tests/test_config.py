@@ -108,6 +108,25 @@ channel = "herder alice"
 """
             )
 
+    def test_storefront_color_defaults_on_and_validates(self):
+        self.assertTrue(self._load().storefront.color)
+        config = self._load(
+            bot=BOT_CONFIG
+            + """
+[storefront]
+color = false
+"""
+        )
+        self.assertFalse(config.storefront.color)
+        with self.assertRaisesRegex(ConfigError, "storefront.color"):
+            self._load(
+                bot=BOT_CONFIG
+                + """
+[storefront]
+color = "yes"
+"""
+            )
+
     def test_oversized_system_prompt_is_rejected(self):
         oversized = "x" * 2049
         with self.assertRaisesRegex(ConfigError, "system_prompt"):

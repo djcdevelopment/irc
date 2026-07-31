@@ -310,7 +310,45 @@ An administrator can inspect and transfer registrations using:
 
 `#general`, `#ops`, and the administrator's `#herder-derek` storefront are
 created and registered by bootstrap. The onboarding registrar creates each
-later member's derived `#herder-<display-name>` storefront.
+new member's `#lab-<slug>` storefront channel (the lab name chosen at
+onboarding, defaulting to the display name) and grants the member's companion
+bot channel-operator status so it can keep the welcome topic current. Members
+provisioned before Personal AI Storefronts keep their legacy
+`#herder-<display-name>` channel until they rename it from the lab editor.
+
+## Personal AI Storefronts
+
+Every member owns a storefront profile: a public web lab page at
+`https://<host>/lab/<slug>` plus their IRC channel. Presentation state
+(lab name, tagline, bio, theme, ASCII banner, marquee, links) lives in the
+portal's SQLite; operational state (hardware, models, jobs, artifacts) is a
+trimmed snapshot the member's bot pushes from HEARTH every five minutes and
+is rendered with an "as of" stamp — the page never fakes operational truth.
+
+- **Editing**: the owner sends `editlab` to their companion in a private
+  message; the bot returns a one-hour magic link to `/lab/edit`. Recovery
+  when the bot is down: `POST /api/admin/lab-edit-links` with the admin
+  token and `{"owner_account": "<owner>"}`.
+- **Channel rename** (lab editor → "Moving day"): registers the new
+  `#lab-<slug>` channel, grants the companion `+o`, rewrites the member and
+  Lounge channel lists, and leaves a forwarding topic on the old channel.
+  The old channel stays registered; retire it manually later with
+  `/CS UNREGISTER #old-channel` once traffic has moved.
+- **Companion rename** (same page, opt-in): provisions the new account with
+  the same password, updates the registry rows and the member file (the
+  supervisor restarts the bot within seconds), then suspends the old
+  account. **Deployed remote agents keep the old name in their local
+  `agent.env`** — each agent host must update `HERDER_ACCOUNT` and restart;
+  the editor and the API response both carry this warning. The primary
+  companion (`COMMUNITY_PRIMARY_HERDER` in `community.env`) is protected
+  from this flow.
+- **The primary's migration**: the administrator's storefront is not
+  portal-managed. After renaming its channel from the lab editor, update
+  `[storefront] channel` in `config/compute-bot/bot.toml` and redeploy.
+- **mIRC color**: bot-composed storefront lines use a restrained semantic
+  palette (dim labels, state colors, one owner-chosen accent). Disable with
+  `[storefront] color = false` in `bot.toml`. Model and remote-agent output
+  is never colored; the completion path strips all control characters.
 
 ## Grant IRC operator access
 

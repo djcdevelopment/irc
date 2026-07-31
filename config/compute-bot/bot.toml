@@ -20,6 +20,9 @@ reconnect_max_seconds = 60
 # inventory is projected from HEARTH and the attached-agent registry.
 channel = "#herder-derek"
 about = "Derek's BotHerder — AI systems, local inference, research, and practical tooling."
+# mIRC color on bot-composed storefront lines. Model output is never colored;
+# the control-character strip on completions stays regardless of this toggle.
+color = true
 
 [community]
 portal_url = "http://127.0.0.1:9010"

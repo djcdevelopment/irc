@@ -7,8 +7,13 @@ This repository deploys a lightweight IRC environment with Docker Compose:
 - Ergo IRC server
 - The Lounge private browser client and administrative fallback
 - A one-time onboarding portal and public private-mode browser lobby
-- One owner-scoped BotHerder IRC identity per community member
-- One persistent `#herder-<display-name>` storefront channel per member
+- One owner-scoped companion bot (BotHerder) IRC identity per community member
+- One persistent `#lab-<slug>` storefront channel per member (legacy
+  `#herder-<display-name>` channels persist until their owners rename them)
+- A Personal AI Storefront per member: a MySpace-era web lab page at
+  `/lab/<slug>` (themes, marquee, visitor counter, ASCII banner) edited via an
+  IRC-rooted magic link, with operational truth projected from HEARTH and
+  never faked
 - HEARTH-backed canonical AI execution with durable jobs, global provider
   capacity, and immutable result artifacts
 - An outbound-only remote-agent adapter for member-controlled model endpoints
@@ -23,7 +28,10 @@ in [docs/RETROSPECTIVE.md](docs/RETROSPECTIVE.md).
 The first personal storefront prototype is covered by
 [docs/RETROSPECTIVE-STOREFRONT-PROTOTYPE.md](docs/RETROSPECTIVE-STOREFRONT-PROTOTYPE.md);
 ongoing human observations belong in
-[docs/STOREFRONT-UX-JOURNAL.md](docs/STOREFRONT-UX-JOURNAL.md).
+[docs/STOREFRONT-UX-JOURNAL.md](docs/STOREFRONT-UX-JOURNAL.md). The
+generalized Personal AI Storefronts surface (web labs, themes, expressive
+identity) resolved that prototype's deferrals by owner decision; see the
+dated addendum in the retrospective.
 
 Pinned official images:
 

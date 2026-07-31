@@ -4,6 +4,7 @@ USER root
 WORKDIR /app
 
 COPY server.js /app/server.js
+COPY lab.js /app/lab.js
 COPY public /app/public
 COPY agent-kit /app/agent-kit
 COPY tests /app/tests
@@ -12,6 +13,7 @@ RUN node /app/tests/test-public-app.js \
     && node /app/tests/test-agent-installers.js \
     && node /app/tests/test-agent-app.js \
     && node /app/tests/test-invite-retry.js \
+    && node /app/tests/test-lab-profiles.js \
     && chown -R node:node /app
 
 USER node

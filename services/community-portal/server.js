@@ -7,6 +7,7 @@ const net = require("node:net");
 const path = require("node:path");
 const {spawnSync} = require("node:child_process");
 const {DatabaseSync} = require("node:sqlite");
+const lab = require("./lab.js");
 
 const NAME_PATTERN = /^[A-Za-z][A-Za-z0-9[\]{}\\`_^|-]{1,31}$/;
 const AGENT_NAME_PATTERN = /^[A-Za-z][A-Za-z0-9_-]{1,23}$/;
@@ -25,6 +26,20 @@ const RESERVED_NAMES = new Set([
 ]);
 const MAX_BODY_BYTES = 16 * 1024;
 const RENAMEABLE_FAILURES = new Set(["name_taken"]);
+const LAB_SLUG_PATTERN = /^[a-z0-9][a-z0-9-]{1,30}$/;
+const RESERVED_LAB_SLUGS = new Set([
+	"admin",
+	"agent-kit",
+	"api",
+	"assets",
+	"edit",
+	"guide",
+	"health",
+	"internal",
+	"join",
+	"lab",
+	"static",
+]);
 const APP_ROOT = path.resolve(__dirname);
 const PUBLIC_ROOT = path.join(APP_ROOT, "public");
 const PUBLIC_FILES = new Map([
@@ -42,6 +57,11 @@ const PUBLIC_FILES = new Map([
 	["/agent-kit/agent_adapter.py", ["../agent-kit/agent_adapter.py", "text/x-python; charset=utf-8"]],
 	["/agent-kit/requirements.txt", ["../agent-kit/requirements.txt", "text/plain; charset=utf-8"]],
 	["/agent-kit/RUNBOOK.md", ["../agent-kit/RUNBOOK.md", "text/markdown; charset=utf-8"]],
+	["/lab/lab.css", ["lab.css", "text/css; charset=utf-8"]],
+	["/lab/edit", ["lab-edit.html", "text/html; charset=utf-8"]],
+	["/lab/edit/", ["lab-edit.html", "text/html; charset=utf-8"]],
+	["/lab/lab-edit.js", ["lab-edit.js", "text/javascript; charset=utf-8"]],
+	["/lab/lab-edit.css", ["lab-edit.css", "text/css; charset=utf-8"]],
 ]);
 
 function requiredEnvironment(name) {
@@ -63,6 +83,12 @@ const config = {
 		.trim()
 		.split(/\s+/),
 	publicBase: requiredEnvironment("COMMUNITY_PUBLIC_BASE").replace(/\/+$/, ""),
+	labBase: (
+		process.env.COMMUNITY_LAB_BASE ||
+		`${requiredEnvironment("COMMUNITY_PUBLIC_BASE")
+			.replace(/\/+$/, "")
+			.replace(/\/join$/, "")}/lab`
+	).replace(/\/+$/, ""),
 	loungeUrl: requiredEnvironment("COMMUNITY_LOUNGE_URL").replace(/\/?$/, "/"),
 	ircPublicHost: requiredEnvironment("COMMUNITY_IRC_PUBLIC_HOST"),
 	ircPublicPort: Number.parseInt(
@@ -77,6 +103,7 @@ const config = {
 	registrarOperPassword: requiredEnvironment("COMMUNITY_REGISTRAR_OPER_PASSWORD"),
 	adminToken: requiredEnvironment("COMMUNITY_ADMIN_TOKEN"),
 	internalToken: requiredEnvironment("COMMUNITY_INTERNAL_TOKEN"),
+	primaryHerder: process.env.COMMUNITY_PRIMARY_HERDER || "DereksBotHerder",
 	credentialKey: Buffer.from(
 		requiredEnvironment("COMMUNITY_CREDENTIAL_KEY"),
 		"base64url"
@@ -99,6 +126,7 @@ if (
 if (config.credentialKey.length !== 32) {
 	throw new Error("COMMUNITY_CREDENTIAL_KEY must decode to exactly 32 bytes");
 }
+RESERVED_NAMES.add(config.primaryHerder.toLowerCase());
 
 for (const directory of [
 	config.stateDir,
@@ -147,7 +175,36 @@ database.exec(`
 	);
 	CREATE INDEX IF NOT EXISTS invites_token_hash ON invites(token_hash);
 	CREATE INDEX IF NOT EXISTS agents_owner ON agents(owner_account, herder_account);
+	CREATE TABLE IF NOT EXISTS storefront_profiles (
+		owner_account TEXT PRIMARY KEY COLLATE NOCASE REFERENCES members(owner_account),
+		lab_name TEXT NOT NULL,
+		lab_slug TEXT NOT NULL UNIQUE COLLATE NOCASE,
+		channel TEXT NOT NULL,
+		tagline TEXT NOT NULL DEFAULT '',
+		bio TEXT NOT NULL DEFAULT '',
+		experiments TEXT NOT NULL DEFAULT '[]',
+		links TEXT NOT NULL DEFAULT '[]',
+		marquee TEXT NOT NULL DEFAULT '',
+		ascii_banner TEXT NOT NULL DEFAULT '',
+		theme TEXT NOT NULL DEFAULT '{}',
+		html_fragment TEXT NOT NULL DEFAULT '',
+		visitors INTEGER NOT NULL DEFAULT 0,
+		created_at TEXT NOT NULL,
+		updated_at TEXT NOT NULL
+	);
+	CREATE TABLE IF NOT EXISTS lab_edit_tokens (
+		token_hash TEXT PRIMARY KEY,
+		owner_account TEXT NOT NULL COLLATE NOCASE,
+		created_at TEXT NOT NULL,
+		expires_at TEXT NOT NULL
+	);
+	CREATE TABLE IF NOT EXISTS hearth_snapshots (
+		herder_account TEXT PRIMARY KEY COLLATE NOCASE,
+		snapshot TEXT NOT NULL,
+		fetched_at TEXT NOT NULL
+	);
 `);
+backfillStorefrontProfiles();
 
 const attempts = new Map();
 
@@ -327,6 +384,9 @@ function validDisplayName(value, fallback = "Community member") {
 	return text;
 }
 
+// Legacy channel derivation. New channels come from the storefront profile;
+// this survives only to seed profiles for members provisioned before profiles
+// existed and to default the channel of a brand-new member.
 function storefrontChannel(displayName) {
 	const slug = displayName
 		.toLowerCase()
@@ -334,6 +394,315 @@ function storefrontChannel(displayName) {
 		.replace(/^-+|-+$/g, "")
 		.slice(0, 56);
 	return `#herder-${slug || "member"}`;
+}
+
+function labSlugCandidate(displayName) {
+	const base = String(displayName || "")
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 31);
+	return LAB_SLUG_PATTERN.test(base) && !RESERVED_LAB_SLUGS.has(base)
+		? base
+		: "";
+}
+
+function availableLabSlug(candidate, ownerAccount) {
+	const base = candidate || "member";
+	for (let attempt = 0; attempt < 100; attempt += 1) {
+		const suffix = attempt === 0 ? "" : `-${attempt + 1}`;
+		const slug = `${base.slice(0, 31 - suffix.length)}${suffix}`;
+		const existing = database
+			.prepare(
+				"SELECT owner_account FROM storefront_profiles WHERE lab_slug = ?"
+			)
+			.get(slug);
+		if (!existing || sameAccount(existing.owner_account, ownerAccount)) {
+			return slug;
+		}
+	}
+	throw new Error("no lab slug is available for this member");
+}
+
+function getProfile(ownerAccount) {
+	return database
+		.prepare("SELECT * FROM storefront_profiles WHERE owner_account = ?")
+		.get(ownerAccount);
+}
+
+function getProfileBySlug(slug) {
+	return database
+		.prepare("SELECT * FROM storefront_profiles WHERE lab_slug = ?")
+		.get(slug);
+}
+
+function ensureStorefrontProfile({
+	ownerAccount,
+	displayName,
+	channel,
+	labName = "",
+	labSlug = "",
+}) {
+	const existing = getProfile(ownerAccount);
+	if (existing) {
+		return existing;
+	}
+	const name = labName || displayName;
+	const created = nowIso();
+	database
+		.prepare(
+			`INSERT INTO storefront_profiles (
+				owner_account, lab_name, lab_slug, channel, created_at, updated_at
+			) VALUES (?, ?, ?, ?, ?, ?)`
+		)
+		.run(
+			ownerAccount,
+			name,
+			labSlug || availableLabSlug(labSlugCandidate(name), ownerAccount),
+			channel,
+			created,
+			created
+		);
+	return getProfile(ownerAccount);
+}
+
+// An optional owner-chosen lab name. Presentation text: it seeds the lab
+// slug, the #lab-<slug> channel, and the storefront page title.
+function validLabName(value) {
+	if (typeof value !== "string") {
+		return "";
+	}
+	const text = value.trim();
+	if (!text) {
+		return "";
+	}
+	if (text.length < 2 || text.length > 48 || /[\x00-\x1f\x7f<>]/.test(text)) {
+		throw Object.assign(
+			new Error("lab name must be 2–48 characters without angle brackets"),
+			{status: 400, code: "invalid_lab_name"}
+		);
+	}
+	return text;
+}
+
+function backfillStorefrontProfiles() {
+	const members = database
+		.prepare("SELECT owner_account, display_name FROM members")
+		.all();
+	for (const member of members) {
+		ensureStorefrontProfile({
+			ownerAccount: member.owner_account,
+			displayName: member.display_name,
+			channel: storefrontChannel(member.display_name),
+		});
+	}
+}
+
+function memberChannel(ownerAccount, displayName) {
+	const profile = getProfile(ownerAccount);
+	return profile ? profile.channel : storefrontChannel(displayName);
+}
+
+function labUrl(slug) {
+	return `${config.labBase}/${slug}`;
+}
+
+const labVisits = new Map();
+
+function mintEditToken(ownerAccount) {
+	const token = strongSecret();
+	const created = new Date();
+	const expires = new Date(created.getTime() + 60 * 60 * 1000);
+	database
+		.prepare("DELETE FROM lab_edit_tokens WHERE owner_account = ? COLLATE NOCASE")
+		.run(ownerAccount);
+	database
+		.prepare(
+			`INSERT INTO lab_edit_tokens (token_hash, owner_account, created_at, expires_at)
+			 VALUES (?, ?, ?, ?)`
+		)
+		.run(tokenHash(token), ownerAccount, created.toISOString(), expires.toISOString());
+	return {token, expires_at: expires.toISOString()};
+}
+
+async function setRedirectTopic(channel, newChannel, url) {
+	// Best effort: the registrar founded member channels, so it can leave a
+	// forwarding topic; a channel it does not control just keeps its topic.
+	const registrar = new IRCSession();
+	try {
+		await registrar.authenticateRegistrar();
+		registrar.send(`JOIN ${channel}`);
+		await registrar.waitFor(
+			(value) =>
+				(value.includes(" JOIN ") || value.includes(" 403 ")) &&
+				value.includes(channel)
+		);
+		registrar.send(`TOPIC ${channel} :moved → ${newChannel} · ${url}`);
+		await registrar.waitFor(
+			(value) =>
+				(value.includes(" TOPIC ") && value.includes(channel)) ||
+				/ 482 /.test(value),
+			5_000
+		);
+		return true;
+	} catch {
+		return false;
+	} finally {
+		registrar.close();
+	}
+}
+
+function rewriteMemberChannel(herderAccount, oldChannel, newChannel) {
+	const destination = path.join(
+		config.herderMembersDir,
+		`${herderAccount}.json`
+	);
+	if (!fs.existsSync(destination)) {
+		return [
+			"the companion is not portal-managed; update its configuration manually",
+		];
+	}
+	const member = JSON.parse(fs.readFileSync(destination, "utf8"));
+	member.channels = (member.channels || []).filter(
+		(channel) =>
+			channel.toLowerCase() !== oldChannel.toLowerCase() &&
+			channel.toLowerCase() !== newChannel.toLowerCase()
+	);
+	member.channels.push(newChannel);
+	member.storefront_channel = newChannel;
+	atomicWriteJson(destination, member);
+	return [];
+}
+
+function rewriteLoungeChannel(ownerAccount, oldChannel, newChannel) {
+	const destination = path.join(
+		config.loungeHome,
+		"users",
+		`${ownerAccount}.json`
+	);
+	if (!fs.existsSync(destination)) {
+		return ["The Lounge profile was not found; join the new channel manually"];
+	}
+	const user = JSON.parse(fs.readFileSync(destination, "utf8"));
+	const network = Array.isArray(user.networks) ? user.networks[0] : null;
+	if (!network) {
+		return ["The Lounge network entry was not found; join the new channel manually"];
+	}
+	network.channels = (network.channels || []).filter(
+		(channel) =>
+			channel.name.toLowerCase() !== oldChannel.toLowerCase() &&
+			channel.name.toLowerCase() !== newChannel.toLowerCase()
+	);
+	network.channels.push({name: newChannel, muted: false, key: ""});
+	atomicWriteJson(destination, user, 0o600);
+	return [];
+}
+
+function publicProfile(profile) {
+	return {
+		owner_account: profile.owner_account,
+		lab_name: profile.lab_name,
+		lab_slug: profile.lab_slug,
+		channel: profile.channel,
+		tagline: profile.tagline,
+		bio: profile.bio,
+		experiments: profile.experiments,
+		links: profile.links,
+		marquee: profile.marquee,
+		ascii_banner: profile.ascii_banner,
+		theme: profile.theme,
+		visitors: profile.visitors,
+		web_url: labUrl(profile.lab_slug),
+		created_at: profile.created_at,
+		updated_at: profile.updated_at,
+	};
+}
+
+function requireEditToken(request) {
+	const token = bearerToken(request);
+	if (typeof token !== "string" || token.length < 32 || token.length > 128) {
+		throw Object.assign(new Error("unauthorized"), {status: 401});
+	}
+	database
+		.prepare("DELETE FROM lab_edit_tokens WHERE expires_at <= ?")
+		.run(nowIso());
+	const row = database
+		.prepare("SELECT owner_account FROM lab_edit_tokens WHERE token_hash = ?")
+		.get(tokenHash(token));
+	if (!row) {
+		throw Object.assign(new Error("unauthorized"), {status: 401});
+	}
+	return row.owner_account;
+}
+
+function recordLabVisit(slug, address) {
+	const key = `${slug}\0${address}`;
+	const now = Date.now();
+	if (now - (labVisits.get(key) || 0) < 3_600_000) {
+		return;
+	}
+	if (labVisits.size >= 10_000) {
+		for (const [visitKey, seen] of labVisits) {
+			if (now - seen >= 3_600_000) {
+				labVisits.delete(visitKey);
+			}
+		}
+		if (labVisits.size >= 10_000) {
+			return;
+		}
+	}
+	labVisits.set(key, now);
+	database
+		.prepare(
+			"UPDATE storefront_profiles SET visitors = visitors + 1 WHERE lab_slug = ?"
+		)
+		.run(slug);
+}
+
+function labSecurityHeaders(response, nonce) {
+	response.setHeader("Content-Type", "text/html; charset=utf-8");
+	response.setHeader("Cache-Control", "no-store, max-age=0");
+	response.setHeader("Referrer-Policy", "no-referrer");
+	response.setHeader("X-Content-Type-Options", "nosniff");
+	response.setHeader("X-Frame-Options", "DENY");
+	response.setHeader(
+		"Content-Security-Policy",
+		`default-src 'none'; style-src 'self' 'nonce-${nonce}'; img-src 'self' data:; frame-ancestors 'none'; base-uri 'none'; form-action 'none'`
+	);
+}
+
+function serveLabPage(response, slug, address) {
+	let profile = getProfileBySlug(slug);
+	if (!profile) {
+		return jsonResponse(response, 404, {error: "not_found"});
+	}
+	// Count the visit before rendering so the visitor sees themselves.
+	recordLabVisit(slug, address);
+	profile = getProfileBySlug(slug);
+	const member = database
+		.prepare("SELECT herder_account FROM members WHERE owner_account = ?")
+		.get(profile.owner_account);
+	const snapshotRow = member
+		? database
+				.prepare("SELECT * FROM hearth_snapshots WHERE herder_account = ?")
+				.get(member.herder_account)
+		: undefined;
+	const nonce = crypto.randomBytes(16).toString("base64url");
+	labSecurityHeaders(response, nonce);
+	response.statusCode = 200;
+	response.end(lab.renderLabPage(profile, snapshotRow, {nonce}));
+}
+
+function ircAccentOf(profile) {
+	try {
+		const theme = JSON.parse(profile.theme);
+		if (Number.isInteger(theme.irc_accent) && theme.irc_accent >= 0 && theme.irc_accent <= 15) {
+			return theme.irc_accent;
+		}
+	} catch {
+		// An unreadable theme falls back to the default accent.
+	}
+	return 11;
 }
 
 function validProvisioningPassword(value) {
@@ -648,7 +1017,7 @@ class IRCSession {
 		);
 	}
 
-	async registerChannel(channel) {
+	async registerChannel(channel, herderAccount = "") {
 		if (!/^#[^\x00\x07\r\n ,:]{1,63}$/.test(channel)) {
 			throw new Error("invalid storefront channel");
 		}
@@ -664,10 +1033,30 @@ class IRCSession {
 				value.includes("ChanServ") &&
 				/(successfully registered|already registered|already exists|registered)/i.test(value)
 		);
-		if (/successfully registered|already registered|already exists|registered/i.test(line)) {
-			return "registered";
+		if (!/successfully registered|already registered|already exists|registered/i.test(line)) {
+			throw new Error("Ergo rejected the storefront channel registration");
 		}
-		throw new Error("Ergo rejected the storefront channel registration");
+		if (herderAccount) {
+			// Channel-operator status lets the Herder keep the storefront
+			// topic current. Best effort: a missing grant only degrades the
+			// welcome topic, never provisioning.
+			try {
+				this.send(
+					`PRIVMSG ChanServ :AMODE ${channel} +o ${herderAccount}`
+				);
+				await this.waitFor(
+					(value) =>
+						value.includes("ChanServ") &&
+						/(amode|persistent mode|already|not authorized)/i.test(value),
+					5_000
+				);
+			} catch {
+				console.error(
+					`storefront_amode_unconfirmed channel=${channel}`
+				);
+			}
+		}
+		return "registered";
 	}
 
 	close() {
@@ -742,18 +1131,17 @@ async function ensureAccounts(accounts) {
 	}
 }
 
-async function ensureStorefrontChannel(channel) {
+async function ensureStorefrontChannel(channel, herderAccount = "") {
 	const registrar = new IRCSession();
 	try {
 		await registrar.authenticateRegistrar();
-		return await registrar.registerChannel(channel);
+		return await registrar.registerChannel(channel, herderAccount);
 	} finally {
 		registrar.close();
 	}
 }
 
-function networkConfig(account, password, displayName) {
-	const storefront = storefrontChannel(displayName);
+function networkConfig(account, password, displayName, storefront) {
 	return {
 		uuid: crypto.randomUUID(),
 		awayMessage: "",
@@ -801,7 +1189,7 @@ function atomicWriteJson(destination, value, mode = 0o640) {
 	fs.chmodSync(destination, mode);
 }
 
-function ensureLoungeUser(account, password, displayName) {
+function ensureLoungeUser(account, password, displayName, storefront) {
 	const destination = path.join(config.loungeHome, "users", `${account}.json`);
 	if (fs.existsSync(destination)) {
 		const existing = JSON.parse(fs.readFileSync(destination, "utf8"));
@@ -840,7 +1228,9 @@ function ensureLoungeUser(account, password, displayName) {
 		}
 		const generatedPath = path.join(temporaryHome, "users", `${account}.json`);
 		const generated = JSON.parse(fs.readFileSync(generatedPath, "utf8"));
-		generated.networks = [networkConfig(account, password, displayName)];
+		generated.networks = [
+			networkConfig(account, password, displayName, storefront),
+		];
 		atomicWriteJson(destination, generated, 0o600);
 	} finally {
 		fs.rmSync(temporaryHome, {recursive: true, force: true});
@@ -852,6 +1242,7 @@ function ensureHerderMember({
 	displayName,
 	herderAccount,
 	herderPassword,
+	storefront,
 }) {
 	const destination = path.join(
 		config.herderMembersDir,
@@ -864,7 +1255,8 @@ function ensureHerderMember({
 		account: herderAccount,
 		nick: herderAccount,
 		irc_password: herderPassword,
-		channels: ["#general", "#ops", storefrontChannel(displayName)],
+		channels: ["#general", "#ops", storefront],
+		storefront_channel: storefront,
 		access_mode: "owner",
 		created_utc: nowIso(),
 	};
@@ -1023,6 +1415,22 @@ async function prepareCredentialEnvelope(invite, submitted) {
 
 async function redeemMember(invite, submitted) {
 	const credentials = await prepareCredentialEnvelope(invite, submitted);
+	// An existing profile keeps its channel; a brand-new member gets a
+	// #lab-<slug> channel named after their lab (default: display name).
+	const priorProfile = getProfile(credentials.ownerAccount);
+	let storefront;
+	let labName = "";
+	let labSlug = "";
+	if (priorProfile) {
+		storefront = priorProfile.channel;
+	} else {
+		labName = validLabName(submitted.lab_name) || credentials.displayName;
+		labSlug = availableLabSlug(
+			labSlugCandidate(labName),
+			credentials.ownerAccount
+		);
+		storefront = `#lab-${labSlug}`;
+	}
 	await ensureAccounts([
 		{
 			name: credentials.ownerAccount,
@@ -1037,13 +1445,14 @@ async function redeemMember(invite, submitted) {
 			field: "herder_account",
 		},
 	]);
-	await ensureStorefrontChannel(storefrontChannel(credentials.displayName));
+	await ensureStorefrontChannel(storefront, credentials.herderAccount);
 	ensureLoungeUser(
 		credentials.ownerAccount,
 		credentials.humanPassword,
-		credentials.displayName
+		credentials.displayName,
+		storefront
 	);
-	ensureHerderMember(credentials);
+	ensureHerderMember({...credentials, storefront});
 	const created = nowIso();
 	database
 		.prepare(
@@ -1060,6 +1469,13 @@ async function redeemMember(invite, submitted) {
 			credentials.herderAccount,
 			created
 		);
+	const profile = ensureStorefrontProfile({
+		ownerAccount: credentials.ownerAccount,
+		displayName: credentials.displayName,
+		channel: storefront,
+		labName,
+		labSlug,
+	});
 	database
 		.prepare(
 			`UPDATE invites SET state = 'redeemed', redeemed_at = ?,
@@ -1081,9 +1497,12 @@ async function redeemMember(invite, submitted) {
 		lounge_url: config.loungeUrl,
 		irc_host: config.ircPublicHost,
 		irc_port: config.ircPublicPort,
-		channels: ["#general", "#ops", storefrontChannel(credentials.displayName)],
+		channels: ["#general", "#ops", storefront],
+		lab_name: profile.lab_name,
+		lab_slug: profile.lab_slug,
+		web_url: labUrl(profile.lab_slug),
 		message:
-			"Your account and BotHerder are ready. This password is shown once.",
+			"Your account and companion are ready. This password is shown once.",
 	};
 }
 
@@ -1194,7 +1613,7 @@ async function revokeAgent(account, ownerAccount, herderAccount) {
 async function offboardMember(ownerAccount, herderAccount) {
 	if (
 		ownerAccount.toLowerCase() === "admin" ||
-		herderAccount.toLowerCase() === "dereksbotherder"
+		sameAccount(herderAccount, config.primaryHerder)
 	) {
 		throw Object.assign(
 			new Error("the primary administrator cannot be offboarded here"),
@@ -1247,6 +1666,15 @@ async function offboardMember(ownerAccount, herderAccount) {
 			)
 			.run(ownerAccount, herderAccount);
 		database
+			.prepare("DELETE FROM lab_edit_tokens WHERE owner_account = ? COLLATE NOCASE")
+			.run(ownerAccount);
+		database
+			.prepare("DELETE FROM hearth_snapshots WHERE herder_account = ? COLLATE NOCASE")
+			.run(herderAccount);
+		database
+			.prepare("DELETE FROM storefront_profiles WHERE owner_account = ? COLLATE NOCASE")
+			.run(ownerAccount);
+		database
 			.prepare(
 				`DELETE FROM members WHERE owner_account = ? COLLATE NOCASE
 				 AND herder_account = ? COLLATE NOCASE`
@@ -1292,6 +1720,235 @@ async function route(request, response) {
 			return jsonResponse(response, 404, {error: "not_found"});
 		}
 		return textResponse(response, 200, fs.readFileSync(filePath), contentType);
+	}
+	if (pathname === "/lab/api/profile") {
+		const ownerAccount = requireEditToken(request);
+		const profile = getProfile(ownerAccount);
+		if (!profile) {
+			throw Object.assign(new Error("storefront profile is missing"), {
+				status: 404,
+				code: "profile_unknown",
+			});
+		}
+		if (request.method === "GET") {
+			return jsonResponse(response, 200, publicProfile(profile));
+		}
+		if (request.method === "PUT") {
+			const body = await readJson(request);
+			const patch = lab.validateProfilePatch(body);
+			const fields = Object.keys(patch);
+			if (fields.length === 0) {
+				throw Object.assign(new Error("no editable fields were provided"), {
+					status: 400,
+				});
+			}
+			const assignments = fields.map((field) => `${field} = ?`).join(", ");
+			database
+				.prepare(
+					`UPDATE storefront_profiles SET ${assignments}, updated_at = ?
+					 WHERE owner_account = ?`
+				)
+				.run(...fields.map((field) => patch[field]), nowIso(), ownerAccount);
+			return jsonResponse(response, 200, publicProfile(getProfile(ownerAccount)));
+		}
+		return jsonResponse(response, 405, {error: "method_not_allowed"});
+	}
+	if (request.method === "POST" && pathname === "/lab/api/rename-channel") {
+		const ownerAccount = requireEditToken(request);
+		const body = await readJson(request);
+		const profile = getProfile(ownerAccount);
+		const member = database
+			.prepare("SELECT * FROM members WHERE owner_account = ? COLLATE NOCASE")
+			.get(ownerAccount);
+		if (!profile || !member) {
+			throw Object.assign(new Error("storefront profile is missing"), {
+				status: 404,
+				code: "profile_unknown",
+			});
+		}
+		const slug =
+			typeof body.lab_slug === "string" ? body.lab_slug.trim().toLowerCase() : "";
+		if (!LAB_SLUG_PATTERN.test(slug) || RESERVED_LAB_SLUGS.has(slug)) {
+			throw Object.assign(
+				new Error(
+					"lab slug must be 2–31 lowercase letters, digits, or hyphens"
+				),
+				{status: 400, code: "invalid_lab_slug"}
+			);
+		}
+		const holder = getProfileBySlug(slug);
+		if (holder && !sameAccount(holder.owner_account, ownerAccount)) {
+			throw Object.assign(new Error("that lab slug is already taken"), {
+				status: 409,
+				code: "slug_taken",
+			});
+		}
+		const newChannel = `#lab-${slug}`;
+		const oldChannel = profile.channel;
+		if (
+			profile.lab_slug.toLowerCase() === slug &&
+			oldChannel.toLowerCase() === newChannel.toLowerCase()
+		) {
+			return jsonResponse(response, 200, {
+				...publicProfile(profile),
+				notes: [],
+			});
+		}
+		await ensureStorefrontChannel(newChannel, member.herder_account);
+		const notes = [];
+		if (oldChannel && oldChannel.toLowerCase() !== newChannel.toLowerCase()) {
+			if (!(await setRedirectTopic(oldChannel, newChannel, labUrl(slug)))) {
+				notes.push(
+					`the old channel ${oldChannel} could not be given a forwarding topic`
+				);
+			}
+		}
+		database
+			.prepare(
+				`UPDATE storefront_profiles SET lab_slug = ?, channel = ?, updated_at = ?
+				 WHERE owner_account = ?`
+			)
+			.run(slug, newChannel, nowIso(), ownerAccount);
+		notes.push(...rewriteMemberChannel(member.herder_account, oldChannel, newChannel));
+		notes.push(...rewriteLoungeChannel(member.owner_account, oldChannel, newChannel));
+		return jsonResponse(response, 200, {
+			...publicProfile(getProfile(ownerAccount)),
+			notes,
+		});
+	}
+	if (request.method === "POST" && pathname === "/lab/api/rename-companion") {
+		const ownerAccount = requireEditToken(request);
+		const body = await readJson(request);
+		const member = database
+			.prepare("SELECT * FROM members WHERE owner_account = ? COLLATE NOCASE")
+			.get(ownerAccount);
+		if (!member) {
+			throw Object.assign(new Error("membership was not found"), {
+				status: 404,
+				code: "member_unknown",
+			});
+		}
+		const oldHerder = member.herder_account;
+		if (sameAccount(oldHerder, config.primaryHerder)) {
+			throw Object.assign(
+				new Error("the primary companion cannot be renamed here"),
+				{status: 403, code: "protected_member"}
+			);
+		}
+		const newName = validAccount(body.companion, "Companion name");
+		if (sameAccount(newName, member.owner_account)) {
+			throw Object.assign(
+				new Error("your companion needs a name different from yours"),
+				{status: 400, code: "names_match"}
+			);
+		}
+		if (sameAccount(newName, oldHerder)) {
+			return jsonResponse(response, 200, {
+				ok: true,
+				companion: oldHerder,
+				notes: [],
+			});
+		}
+		const clash =
+			database
+				.prepare(
+					`SELECT owner_account FROM members
+					 WHERE herder_account = ? COLLATE NOCASE
+					 OR owner_account = ? COLLATE NOCASE`
+				)
+				.get(newName, newName) ||
+			database
+				.prepare("SELECT account FROM agents WHERE account = ? COLLATE NOCASE")
+				.get(newName);
+		if (clash) {
+			throw Object.assign(new Error("that name is already in use"), {
+				status: 409,
+				code: "name_taken",
+			});
+		}
+		const memberPath = path.join(config.herderMembersDir, `${oldHerder}.json`);
+		if (!fs.existsSync(memberPath)) {
+			throw Object.assign(
+				new Error("the companion is not portal-managed; rename it manually"),
+				{status: 409, code: "companion_unmanaged"}
+			);
+		}
+		const memberJson = JSON.parse(fs.readFileSync(memberPath, "utf8"));
+		await ensureAccounts([
+			{
+				name: newName,
+				password: memberJson.irc_password,
+				label: "Companion name",
+			},
+		]);
+		const profile = getProfile(ownerAccount);
+		if (profile) {
+			await ensureStorefrontChannel(profile.channel, newName);
+		}
+		database.exec("BEGIN IMMEDIATE");
+		try {
+			database
+				.prepare(
+					`UPDATE members SET herder_account = ?
+					 WHERE owner_account = ? COLLATE NOCASE`
+				)
+				.run(newName, ownerAccount);
+			database
+				.prepare(
+					`UPDATE agents SET herder_account = ?
+					 WHERE herder_account = ? COLLATE NOCASE`
+				)
+				.run(newName, oldHerder);
+			database
+				.prepare(
+					"DELETE FROM hearth_snapshots WHERE herder_account = ? COLLATE NOCASE"
+				)
+				.run(oldHerder);
+			database.exec("COMMIT");
+		} catch (error) {
+			database.exec("ROLLBACK");
+			throw error;
+		}
+		memberJson.account = newName;
+		memberJson.nick = newName;
+		atomicWriteJson(
+			path.join(config.herderMembersDir, `${newName}.json`),
+			memberJson
+		);
+		fs.unlinkSync(memberPath);
+		const registrar = new IRCSession();
+		try {
+			await registrar.authenticateRegistrar();
+			await registrar.suspendAccount(oldHerder);
+		} finally {
+			registrar.close();
+		}
+		const activeAgents = database
+			.prepare(
+				`SELECT COUNT(*) AS total FROM agents
+				 WHERE herder_account = ? COLLATE NOCASE AND state = 'active'`
+			)
+			.get(newName).total;
+		const notes = [];
+		if (activeAgents > 0) {
+			notes.push(
+				`${activeAgents} deployed remote agent(s) still target ${oldHerder}; ` +
+					"update HERDER_ACCOUNT in each agent.env and restart them"
+			);
+		}
+		return jsonResponse(response, 200, {
+			ok: true,
+			companion: newName,
+			previous: oldHerder,
+			notes,
+		});
+	}
+	if (request.method === "GET" && pathname.startsWith("/lab/")) {
+		const slug = pathname.slice(5).replace(/\/+$/, "").toLowerCase();
+		if (!LAB_SLUG_PATTERN.test(slug) || RESERVED_LAB_SLUGS.has(slug)) {
+			return jsonResponse(response, 404, {error: "not_found"});
+		}
+		return serveLabPage(response, slug, clientAddress(request));
 	}
 	if (request.method === "POST" && pathname === "/api/invites/preview") {
 		enforcePublicRateLimit(request);
@@ -1342,7 +1999,8 @@ async function route(request, response) {
 			"BotHerder account"
 		);
 		const displayName = validDisplayName(body.display_name, ownerAccount);
-		await ensureStorefrontChannel(storefrontChannel(displayName));
+		const storefront = memberChannel(ownerAccount, displayName);
+		await ensureStorefrontChannel(storefront, herderAccount);
 		if (body.account_password !== undefined) {
 			const password = validProvisioningPassword(body.account_password);
 			if (!(await verifyAccountPassword(ownerAccount, password))) {
@@ -1351,7 +2009,7 @@ async function route(request, response) {
 					{status: 403, code: "account_auth_failed"}
 				);
 			}
-			ensureLoungeUser(ownerAccount, password, displayName);
+			ensureLoungeUser(ownerAccount, password, displayName, storefront);
 		}
 		database
 			.prepare(
@@ -1363,6 +2021,11 @@ async function route(request, response) {
 					herder_account = excluded.herder_account`
 			)
 			.run(ownerAccount, displayName, herderAccount, nowIso());
+		ensureStorefrontProfile({
+			ownerAccount,
+			displayName,
+			channel: storefront,
+		});
 		return jsonResponse(response, 200, {
 			ok: true,
 			owner_account: ownerAccount,
@@ -1472,17 +2135,126 @@ async function route(request, response) {
 			agentsByHerder.set(key, list);
 		}
 		return jsonResponse(response, 200, {
-			storefronts: members.map((member) => ({
-				owner_account: member.owner_account,
-				display_name: member.display_name,
-				herder_account: member.herder_account,
-				channel: storefrontChannel(member.display_name),
-				created_at: member.created_at,
-				agents: agentsByHerder.get(
-					`${member.owner_account}\0${member.herder_account}`.toLowerCase()
-				) || [],
-			})),
+			storefronts: members.map((member) => {
+				const profile = ensureStorefrontProfile({
+					ownerAccount: member.owner_account,
+					displayName: member.display_name,
+					channel: storefrontChannel(member.display_name),
+				});
+				return {
+					owner_account: member.owner_account,
+					display_name: member.display_name,
+					herder_account: member.herder_account,
+					channel: profile.channel,
+					lab_name: profile.lab_name,
+					lab_slug: profile.lab_slug,
+					tagline: profile.tagline,
+					web_url: labUrl(profile.lab_slug),
+					irc_accent: ircAccentOf(profile),
+					created_at: member.created_at,
+					agents: agentsByHerder.get(
+						`${member.owner_account}\0${member.herder_account}`.toLowerCase()
+					) || [],
+				};
+			}),
 		});
+	}
+	if (
+		request.method === "POST" &&
+		pathname === "/api/internal/lab-edit-links"
+	) {
+		requireToken(request, config.internalToken);
+		const body = await readJson(request);
+		const ownerAccount = validExistingAccount(
+			body.owner_account,
+			"Owner account"
+		);
+		const herderAccount = validExistingAccount(
+			body.herder_account,
+			"BotHerder account"
+		);
+		const member = database
+			.prepare(
+				`SELECT * FROM members WHERE owner_account = ? COLLATE NOCASE
+				 AND herder_account = ? COLLATE NOCASE`
+			)
+			.get(ownerAccount, herderAccount);
+		if (!member) {
+			throw Object.assign(new Error("BotHerder membership is unknown"), {
+				status: 403,
+				code: "member_unknown",
+			});
+		}
+		ensureStorefrontProfile({
+			ownerAccount: member.owner_account,
+			displayName: member.display_name,
+			channel: storefrontChannel(member.display_name),
+		});
+		const minted = mintEditToken(member.owner_account);
+		return jsonResponse(response, 201, {
+			url: `${config.labBase}/edit#${minted.token}`,
+			expires_at: minted.expires_at,
+		});
+	}
+	if (request.method === "POST" && pathname === "/api/admin/lab-edit-links") {
+		requireToken(request, config.adminToken);
+		const body = await readJson(request);
+		const ownerAccount = validExistingAccount(
+			body.owner_account,
+			"Owner account"
+		);
+		const member = database
+			.prepare("SELECT * FROM members WHERE owner_account = ? COLLATE NOCASE")
+			.get(ownerAccount);
+		if (!member) {
+			throw Object.assign(new Error("community member was not found"), {
+				status: 404,
+				code: "member_unknown",
+			});
+		}
+		ensureStorefrontProfile({
+			ownerAccount: member.owner_account,
+			displayName: member.display_name,
+			channel: storefrontChannel(member.display_name),
+		});
+		const minted = mintEditToken(member.owner_account);
+		return jsonResponse(response, 201, {
+			url: `${config.labBase}/edit#${minted.token}`,
+			expires_at: minted.expires_at,
+		});
+	}
+	if (
+		request.method === "POST" &&
+		pathname === "/api/internal/storefront-snapshot"
+	) {
+		requireToken(request, config.internalToken);
+		const body = await readJson(request);
+		const herderAccount = validExistingAccount(
+			body.herder_account,
+			"BotHerder account"
+		);
+		const member = database
+			.prepare(
+				"SELECT owner_account FROM members WHERE herder_account = ? COLLATE NOCASE"
+			)
+			.get(herderAccount);
+		if (!member) {
+			throw Object.assign(new Error("BotHerder membership is unknown"), {
+				status: 403,
+				code: "member_unknown",
+			});
+		}
+		const snapshot = lab.sanitizeSnapshot(body.snapshot);
+		database
+			.prepare(
+				`INSERT INTO hearth_snapshots (herder_account, snapshot, fetched_at)
+				 VALUES (?, ?, ?)
+				 ON CONFLICT(herder_account) DO UPDATE SET
+					snapshot = excluded.snapshot,
+					fetched_at = excluded.fetched_at`
+			)
+			.run(herderAccount, snapshot, nowIso());
+		return jsonResponse(response, 200, {ok: true});
 	}
 	if (request.method === "POST" && pathname === "/api/internal/agents/revoke") {
 		requireToken(request, config.internalToken);

@@ -66,5 +66,22 @@ class CommunityPortalClient:
             },
         )
 
+    async def push_snapshot(self, herder_account: str, snapshot: dict) -> dict:
+        return await self._request(
+            "POST",
+            "/api/internal/storefront-snapshot",
+            json={"herder_account": herder_account, "snapshot": snapshot},
+        )
+
+    async def mint_edit_link(self, owner_account: str, herder_account: str) -> dict:
+        return await self._request(
+            "POST",
+            "/api/internal/lab-edit-links",
+            json={
+                "owner_account": owner_account,
+                "herder_account": herder_account,
+            },
+        )
+
     async def close(self) -> None:
         await self._client.aclose()
