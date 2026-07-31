@@ -26,8 +26,8 @@ def model_config():
 
 
 class ModelClientTests(unittest.IsolatedAsyncioTestCase):
-    async def _client_with_handler(self, handler):
-        client = ModelClient()
+    async def _client_with_handler(self, handler, system_prompt=""):
+        client = ModelClient(system_prompt)
         await client._client.aclose()
         client._client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
         self.addAsyncCleanup(client.close)
@@ -50,6 +50,42 @@ class ModelClientTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(observed["authorization"], "Bearer super-secret")
         self.assertEqual(observed["body"]["max_tokens"], 512)
         self.assertFalse(observed["body"]["stream"])
+
+    async def test_system_prompt_is_sent_before_the_user_turn(self):
+        observed = {}
+
+        def handler(request):
+            observed["body"] = json.loads(request.content)
+            return httpx.Response(
+                200, json={"choices": [{"message": {"content": "ok"}}]}
+            )
+
+        client = await self._client_with_handler(
+            handler, system_prompt="Plain text only."
+        )
+        await client.complete(model_config(), "hello")
+        self.assertEqual(
+            observed["body"]["messages"],
+            [
+                {"role": "system", "content": "Plain text only."},
+                {"role": "user", "content": "hello"},
+            ],
+        )
+
+    async def test_no_system_message_when_none_is_configured(self):
+        observed = {}
+
+        def handler(request):
+            observed["body"] = json.loads(request.content)
+            return httpx.Response(
+                200, json={"choices": [{"message": {"content": "ok"}}]}
+            )
+
+        client = await self._client_with_handler(handler)
+        await client.complete(model_config(), "hello")
+        self.assertEqual(
+            observed["body"]["messages"], [{"role": "user", "content": "hello"}]
+        )
 
     async def test_usage_is_recorded_when_the_endpoint_reports_it(self):
         client = await self._client_with_handler(

@@ -23,6 +23,19 @@ internal_token_env = "COMMUNITY_INTERNAL_TOKEN"
 # before this generic ceiling fires.
 agent_timeout_seconds = 660
 
+[completion]
+# Sent as the system message on every local model request. IRC has no markdown
+# renderer, and a table costs one line per row out of max_output_lines, so a
+# formatted answer is cut off long before its byte budget is spent. The bot
+# also flattens markdown it receives; this keeps it from being produced at all.
+# An empty string sends no system message.
+system_prompt = """
+You are answering in an IRC channel. Write plain text only: no markdown, no \
+tables, no headings, no horizontal rules, and no bold or italic markers. Keep \
+each line short and able to stand on its own. Lead with the answer, add only \
+the detail that matters, and stop within a dozen short lines.
+"""
+
 [limits]
 requests_per_minute = 6
 max_prompt_bytes = 2048

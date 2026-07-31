@@ -80,6 +80,7 @@ class AppConfig:
     community: CommunityConfig
     models: Mapping[str, ModelConfig]
     log_level: str
+    system_prompt: str = ""
 
     @property
     def secrets(self) -> tuple[str, ...]:
@@ -276,6 +277,21 @@ def _load_community(raw: dict, environ: Mapping[str, str]) -> CommunityConfig:
     )
 
 
+def _load_system_prompt(raw: dict) -> str:
+    table = raw.get("completion", {})
+    if not isinstance(table, dict):
+        raise ConfigError("[completion] must be a table")
+    value = table.get("system_prompt", "")
+    if not isinstance(value, str):
+        raise ConfigError("completion.system_prompt must be a string")
+    prompt = value.strip()
+    if "\0" in prompt:
+        raise ConfigError("completion.system_prompt contains a forbidden control character")
+    if len(prompt.encode("utf-8")) > 2048:
+        raise ConfigError("completion.system_prompt is too long")
+    return prompt
+
+
 def _load_models(raw: dict, environ: Mapping[str, str]) -> Mapping[str, ModelConfig]:
     tables = raw.get("models")
     if not isinstance(tables, dict) or not tables:
@@ -353,4 +369,5 @@ def load_config(
         community=_load_community(bot_raw, environment),
         models=_load_models(models_raw, environment),
         log_level=log_level,
+        system_prompt=_load_system_prompt(bot_raw),
     )

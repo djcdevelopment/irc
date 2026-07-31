@@ -62,6 +62,76 @@ class OutputTests(unittest.TestCase):
         )
         self.assertEqual(chunks, ["short answer"])
 
+    def test_markdown_table_flattens_to_informative_lines(self):
+        content = "\n".join(
+            [
+                "## 1. A Quick Biography",
+                "",
+                "| Year | Milestone |",
+                "|------|-----------|",
+                "| **1945** | Born in New York City. |",
+                "| **1979** | Published *Gödel, Escher, Bach*. |",
+                "---",
+                "## 2. Core Ideas",
+            ]
+        )
+        chunks = chunk_completion(
+            content,
+            max_payload_bytes=360,
+            max_output_bytes=4096,
+            max_lines=15,
+        )
+        self.assertEqual(
+            chunks,
+            [
+                "1. A Quick Biography",
+                "Year — Milestone",
+                "1945 — Born in New York City.",
+                "1979 — Published Gödel, Escher, Bach.",
+                "2. Core Ideas",
+            ],
+        )
+
+    def test_emphasis_markers_are_stripped(self):
+        chunks = chunk_completion(
+            "**bold** and *italic* and ***both***",
+            max_payload_bytes=360,
+            max_output_bytes=4096,
+            max_lines=15,
+        )
+        self.assertEqual(chunks, ["bold and italic and both"])
+
+    def test_code_identifiers_survive_flattening(self):
+        content = "set max_output_bytes and pass **args and **kwargs to __init__"
+        chunks = chunk_completion(
+            content,
+            max_payload_bytes=360,
+            max_output_bytes=4096,
+            max_lines=15,
+        )
+        self.assertEqual(chunks, [content])
+
+    def test_code_fences_go_but_the_code_stays(self):
+        chunks = chunk_completion(
+            "```python\nprint('hi')\n```",
+            max_payload_bytes=360,
+            max_output_bytes=4096,
+            max_lines=15,
+        )
+        self.assertEqual(chunks, ["print('hi')"])
+
+    def test_flattening_keeps_a_table_inside_the_line_budget(self):
+        rows = "\n".join(f"| {year} | milestone {year} |" for year in range(1900, 1912))
+        content = f"## Timeline\n\n| Year | Milestone |\n|---|---|\n{rows}\n---\n## Next"
+        chunks = chunk_completion(
+            content,
+            max_payload_bytes=360,
+            max_output_bytes=4096,
+            max_lines=15,
+        )
+        self.assertNotIn(TRUNCATION_MARKER[:-1], chunks[-1])
+        self.assertEqual(chunks[-1], "Next")
+
     def test_format_bytes_scales(self):
         self.assertEqual(format_bytes(512), "512B")
         self.assertEqual(format_bytes(2048), "2.0KiB")

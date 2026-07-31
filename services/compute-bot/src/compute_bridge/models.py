@@ -70,7 +70,8 @@ def _extract_content(payload: Any) -> str:
 
 
 class ModelClient:
-    def __init__(self) -> None:
+    def __init__(self, system_prompt: str = "") -> None:
+        self._system_prompt = system_prompt.strip()
         self._client = httpx.AsyncClient(
             follow_redirects=False,
             limits=httpx.Limits(max_connections=8, max_keepalive_connections=4),
@@ -78,6 +79,13 @@ class ModelClient:
 
     async def close(self) -> None:
         await self._client.aclose()
+
+    def _messages(self, prompt: str) -> list[dict[str, str]]:
+        messages: list[dict[str, str]] = []
+        if self._system_prompt:
+            messages.append({"role": "system", "content": self._system_prompt})
+        messages.append({"role": "user", "content": prompt})
+        return messages
 
     async def complete(self, model: ModelConfig, prompt: str) -> Completion:
         timeout = httpx.Timeout(model.timeout_seconds, connect=min(10, model.timeout_seconds))
@@ -90,7 +98,7 @@ class ModelClient:
                 },
                 json={
                     "model": model.model_id,
-                    "messages": [{"role": "user", "content": prompt}],
+                    "messages": self._messages(prompt),
                     "max_tokens": model.effective_max_tokens,
                     "stream": False,
                 },

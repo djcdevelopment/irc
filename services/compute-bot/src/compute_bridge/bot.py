@@ -67,7 +67,7 @@ class BotHerder:
         self.config = config
         self.metrics = metrics
         self.portal = portal
-        self.model_client = ModelClient()
+        self.model_client = ModelClient(config.system_prompt)
         self.rate_limiter = SlidingWindowRateLimiter(
             config.limits.requests_per_minute
         )
