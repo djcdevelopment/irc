@@ -326,13 +326,16 @@ def test_basic() -> None:
         print_transcript("ask-result", completion[0][0])
         print("PASS 3: gpt-oss-120b returned a non-empty completion")
 
+        # A line that names no provider is treated as the question itself and
+        # routed to the default model. The acknowledgement names the provider,
+        # which is how a mistyped agent name stays visible.
         client.send(
-            f"PRIVMSG {ACCEPTANCE_CHANNEL} :{BOT_NICK}: "
-            "ask no-such-model hello"
+            f"PRIVMSG {ACCEPTANCE_CHANNEL} :!ask what is a bloom filter?"
         )
-        unknown, _ = client.wait_for_bot("unknown model")
-        print_transcript("unknown", unknown)
-        print("PASS 4: unknown model returned a friendly error")
+        routed, _ = client.wait_for_bot("via gpt-oss-120b")
+        print_transcript("default-route", routed)
+        client.drain(3)
+        print("PASS 4: bare !ask routed to the default model and named it")
 
         marker = f"anon-{int(time.time())}"
         anonymous = start_anonymous_probe(compose, marker)

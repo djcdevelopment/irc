@@ -5,7 +5,12 @@ nick = "DereksBotHerder"
 account = "DereksBotHerder"
 password_env = "IRC_BOT_PASSWORD"
 owner_account = "admin"
-access_mode = "owner"
+# Any authenticated account may address this Herder by nick. A bare "!command"
+# is still owner-only, so one member's shorthand cannot make every Herder in the
+# channel answer at once.
+access_mode = "authenticated"
+# Used when a request names no model or agent.
+default_model = "gpt-oss-120b"
 channels = ["#general", "#ops"]
 reconnect_initial_seconds = 2
 reconnect_max_seconds = 60

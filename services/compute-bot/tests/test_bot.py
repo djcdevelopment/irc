@@ -1,6 +1,7 @@
 import asyncio
 import tempfile
 import unittest
+from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
 
@@ -112,19 +113,64 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
             self.replies, [("#general", "Alice: test - Test model")]
         )
 
-    async def test_unknown_model_never_consumes_rate_limit(self):
-        message = IRCMessage(
-            tags={"account": "Alice"},
-            prefix="Alice!user@host",
-            command="PRIVMSG",
-            params=("#general", "AlicesHerder: ask missing prompt"),
+    async def _channel(self, text, account="Alice"):
+        await self.bot._handle_privmsg(
+            IRCMessage(
+                tags={"account": account},
+                prefix=f"{account}!user@host",
+                command="PRIVMSG",
+                params=("#general", text),
+            )
         )
-        for _ in range(7):
-            await self.bot._handle_privmsg(message)
-        self.assertEqual(len(self.replies), 7)
-        for _, text in self.replies:
-            self.assertIn("unknown model or agent", text)
-            self.assertNotIn("rate limit", text)
+
+    async def test_bare_command_from_owner_is_answered(self):
+        await self._channel("!models")
+        self.assertEqual(self.replies, [("#general", "Alice: test - Test model")])
+
+    async def test_bare_command_from_non_owner_is_ignored(self):
+        await self._channel("!models", account="Bob")
+        self.assertEqual(self.replies, [])
+
+    async def test_bare_bang_requires_a_letter(self):
+        await self._channel("!!models")
+        await self._channel("!42")
+        await self._channel("!")
+        self.assertEqual(self.replies, [])
+
+    async def test_bare_ask_without_a_model_uses_the_default(self):
+        seen = {}
+
+        async def completion(model, prompt):
+            seen["model"] = model.name
+            seen["prompt"] = prompt
+            return Completion(text="42")
+
+        self.bot.model_client.complete = completion
+        await self._channel("!ask what's the meaning of life?")
+        await asyncio.gather(*self.bot.request_tasks)
+        self.assertEqual(seen["model"], "test")
+        self.assertEqual(seen["prompt"], "what's the meaning of life?")
+
+    async def test_named_model_still_wins_and_is_stripped(self):
+        seen = {}
+
+        async def completion(model, prompt):
+            seen["prompt"] = prompt
+            return Completion(text="ok")
+
+        self.bot.model_client.complete = completion
+        await self._channel("!ask test explain the tradeoff")
+        await asyncio.gather(*self.bot.request_tasks)
+        self.assertEqual(seen["prompt"], "explain the tradeoff")
+
+    async def test_acknowledgement_names_the_chosen_provider(self):
+        async def completion(model, prompt):
+            return Completion(text="ok")
+
+        self.bot.model_client.complete = completion
+        await self._channel("!ask an unnamed question")
+        await asyncio.gather(*self.bot.request_tasks)
+        self.assertIn("via test", self.replies[0][1])
 
     async def test_dispatchable_requests_are_rate_limited(self):
         async def completion(model, prompt):
@@ -174,7 +220,10 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
                 params=("#general", "AlicesHerder: ask test slow request"),
             )
         )
-        self.assertRegex(self.replies[-1][1], r"^Alice: working\.\.\. \(req [0-9a-f]{12}\)$")
+        self.assertRegex(
+            self.replies[-1][1],
+            r"^Alice: working\.\.\. \(req [0-9a-f]{12} via test\)$",
+        )
         self.assertEqual(self.bot.pending_count, 1)
 
         await self.bot._handle_privmsg(
@@ -233,15 +282,12 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("#project", self.bot.channels_to_join)
         self.assertEqual(sent, ["JOIN #project"])
 
-    async def test_unaddressed_channel_command_is_ignored(self):
-        await self.bot._handle_privmsg(
-            IRCMessage(
-                tags={"account": "Alice"},
-                prefix="Alice!user@host",
-                command="PRIVMSG",
-                params=("#general", "!models"),
-            )
-        )
+    async def test_bare_command_owner_match_ignores_access_mode(self):
+        # Owner-match is the only thing stopping every member's Herder from
+        # answering the same bare command, so "authenticated" must not relax it.
+        authenticated = replace(self.bot.config.irc, access_mode="authenticated")
+        object.__setattr__(self.bot, "config", replace(self.bot.config, irc=authenticated))
+        await self._channel("!models", account="Bob")
         self.assertEqual(self.replies, [])
 
     async def _pending_agent_request(self):

@@ -27,6 +27,7 @@ class IRCConfig:
     channels: tuple[str, ...]
     reconnect_initial_seconds: float
     reconnect_max_seconds: float
+    default_model: str = ""
 
 
 @dataclass(frozen=True)
@@ -108,6 +109,13 @@ def _required_string(table: dict, key: str, context: str) -> str:
     return value.strip()
 
 
+def _optional_text(table: dict, key: str, context: str) -> str:
+    value = table.get(key, "")
+    if not isinstance(value, str):
+        raise ConfigError(f"{context}.{key} must be a string")
+    return value.strip()
+
+
 def _integer(
     table: dict,
     key: str,
@@ -179,6 +187,7 @@ def _load_irc(raw: dict, environ: Mapping[str, str]) -> IRCConfig:
         password=password,
         owner_account=owner_account,
         access_mode=access_mode,
+        default_model=_optional_text(table, "default_model", "irc"),
         channels=tuple(channels),
         reconnect_initial_seconds=_number(
             table, "reconnect_initial_seconds", "irc", default=2, minimum=0.25

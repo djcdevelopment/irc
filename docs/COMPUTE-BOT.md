@@ -11,18 +11,36 @@ session, not a shared command identity.
 
 ## Commands
 
-In a shared channel, explicitly address the Herder:
+Your own Herder answers a bare `!` command:
 
 ```text
-DereksBotHerder: help
-DereksBotHerder: models
-DereksBotHerder: ask gpt-oss-120b <prompt>
-DereksBotHerder: status
+!ask what is a bloom filter?
+!ask gpt-oss-120b review this design
+!ask MyRemoteAgent explain one architecture pattern
+!models
+!status
 ```
 
-An unaddressed `!ask` is ignored. The default member configuration also ignores
-commands from authenticated accounts other than its owner. Unauthenticated
-messages are always ignored based on the server-supplied IRCv3 `account` tag.
+Naming a model or agent is optional. When the first word is not a known
+provider, the whole line is the question and the configured `default_model`
+answers it. The acknowledgement names whichever provider was chosen —
+`working... (req 0b9660d1a495 via gpt-oss-120b)` — so a mistyped agent name is
+visible rather than silently answered by the default model.
+
+A bare `!` command is answered **only** by the Herder whose owner sent it, no
+matter what `access_mode` says. That is what stops every member's Herder
+replying to the same line in a shared channel.
+
+To reach someone else's Herder, address it by nick:
+
+```text
+DereksBotHerder: ask what can you tell me about hofstadter?
+```
+
+Whether that is answered depends on the target Herder's `access_mode`:
+`owner` accepts only its owner, `authenticated` accepts any authenticated
+account. Unauthenticated messages are always ignored, based on the
+server-supplied IRCv3 `account` tag.
 
 Owner-only private commands:
 
