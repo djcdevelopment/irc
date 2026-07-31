@@ -27,6 +27,11 @@ artifact integrity, shared leases, idempotency, cancellation, restart recovery,
 direct/delegated ownership, exact trusted-host policy, audit redaction, MCP
 adapter behavior, and IRC projection boundaries.
 
+Final `compose config --quiet` validation passed. The integrated AM4 check
+passed 20/20 across Compose, all four healthy containers, persistent state,
+loopback binds, IRC/HTTP protocols, Lounge/portal profiles, public Funnel
+routes, the private HEARTH plan path, SASL membership, and BotHerder hardening.
+
 ## Private route
 
 OMEN:
@@ -106,6 +111,11 @@ PASS: deterministic acknowledgement and generated answer agree on HEARTH
 `!status` and the acknowledgement are authoritative. Generated prose receives a
 non-secret execution-context system message but remains explanatory.
 
+The dedicated caller key was searched in the gateway task log, legacy gateway
+audit ledger, and canonical Execution Ledger: zero occurrences. The AM4 check
+independently searched BotHerder logs for every configured bot, model, portal,
+HEARTH, account, and operator secret and passed.
+
 ## Execution Ledger and artifacts
 
 At capture time:
@@ -168,4 +178,3 @@ HEARTH gateway       122.4 MiB working set
 ```
 
 All four AM4 containers were healthy. The deployment was left running.
-
