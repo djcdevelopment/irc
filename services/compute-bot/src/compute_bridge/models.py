@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -31,6 +32,27 @@ class EmptyCompletion(ModelError):
     public_message = "the model returned no completion"
 
 
+@dataclass(frozen=True)
+class Completion:
+    text: str
+    prompt_tokens: int | None = None
+    completion_tokens: int | None = None
+    total_tokens: int | None = None
+
+
+def _extract_usage(payload: Any) -> dict[str, int | None]:
+    """Read OpenAI-style usage. Absent or malformed counts stay None, never zero."""
+    usage = payload.get("usage") if isinstance(payload, dict) else None
+    if not isinstance(usage, dict):
+        return {}
+    counts: dict[str, int | None] = {}
+    for field in ("prompt_tokens", "completion_tokens", "total_tokens"):
+        value = usage.get(field)
+        if isinstance(value, int) and not isinstance(value, bool) and value >= 0:
+            counts[field] = value
+    return counts
+
+
 def _extract_content(payload: Any) -> str:
     try:
         content = payload["choices"][0]["message"]["content"]
@@ -57,7 +79,7 @@ class ModelClient:
     async def close(self) -> None:
         await self._client.aclose()
 
-    async def complete(self, model: ModelConfig, prompt: str) -> str:
+    async def complete(self, model: ModelConfig, prompt: str) -> Completion:
         timeout = httpx.Timeout(model.timeout_seconds, connect=min(10, model.timeout_seconds))
         try:
             response = await self._client.post(
@@ -92,4 +114,4 @@ class ModelClient:
         content = _extract_content(payload)
         if not content:
             raise EmptyCompletion
-        return content
+        return Completion(text=content, **_extract_usage(payload))

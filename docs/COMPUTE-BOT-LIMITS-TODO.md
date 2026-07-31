@@ -43,6 +43,16 @@ belongs in Gate A.
 
 ## Gate B: required before throughput increases
 
+Done on 2026-07-30:
+
+- Rate-limit capacity is consumed only after prompt and provider validation, so
+  a mistyped model name no longer costs a slot.
+- HERDER/1 requests above the adapter's 64-fragment limit are rejected with an
+  explicit `too_large` error instead of being dropped into a timeout.
+- The adapter bounds its own concurrency (`OPENAI_MAX_CONCURRENT_REQUESTS`) and
+  expires incomplete fragment buffers, which previously leaked.
+- A delivery failure is recorded as `undelivered` rather than `ok`.
+
 Future TODO:
 
 - Add a supervisor-level global scheduler/semaphore and shared `ModelClient`.
@@ -51,14 +61,18 @@ Future TODO:
 - Add PONG priority or paced output lines.
 - Expose `queued_at`, queue position, estimated start, dispatch time, and
   execution deadline.
-- Reject HERDER/1 requests exceeding the adapter's 64-fragment receive limit.
-- Consume rate-limit capacity only after prompt and provider validation.
 - Include `working`, errors, help, models, status, and agent listings in the
   practical 70–90-line-per-minute IRC budget.
 - Reap inactive rate-limiter account entries.
 - Ensure retries and reconnects cannot duplicate backend work.
 
 Do not raise RPM, concurrency, or pending depth before this gate.
+
+`community.agent_timeout_seconds` was raised from 120 to 660 on 2026-07-30 so
+agentic remote agents can finish. This is a timeout, not a throughput increase,
+so it does not breach the gate — but it lengthens the window in which pending
+slots stay occupied, and it widens the window in which a completed result can be
+lost to a reconnect. Both arguments for doing the artifact work in Gate C.
 
 ## Gate C: required before larger prompts or responses
 

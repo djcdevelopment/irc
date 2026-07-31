@@ -13,7 +13,10 @@ reconnect_max_seconds = 60
 [community]
 portal_url = "http://127.0.0.1:9010"
 internal_token_env = "COMMUNITY_INTERNAL_TOKEN"
-agent_timeout_seconds = 120
+# Agentic remote agents run for minutes, not seconds. Kept above the adapter's
+# own OPENAI_TIMEOUT_SECONDS default (600) so the agent's specific error arrives
+# before this generic ceiling fires.
+agent_timeout_seconds = 660
 
 [limits]
 requests_per_minute = 6

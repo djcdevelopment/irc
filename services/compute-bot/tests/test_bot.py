@@ -13,6 +13,7 @@ from compute_bridge.config import (
     LimitsConfig,
     ModelConfig,
 )
+from compute_bridge.models import Completion
 from compute_bridge.protocol import IRCMessage
 from compute_bridge.output import chunk_completion
 
@@ -75,6 +76,7 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
 
         async def capture(target, text):
             self.replies.append((target, text))
+            return True
 
         self.bot._reply = capture
 
@@ -110,7 +112,7 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
             self.replies, [("#general", "Alice: test - Test model")]
         )
 
-    async def test_unknown_models_are_friendly_and_rate_limited(self):
+    async def test_unknown_model_never_consumes_rate_limit(self):
         message = IRCMessage(
             tags={"account": "Alice"},
             prefix="Alice!user@host",
@@ -120,15 +122,48 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
         for _ in range(7):
             await self.bot._handle_privmsg(message)
         self.assertEqual(len(self.replies), 7)
-        self.assertIn("unknown model or agent", self.replies[0][1])
-        self.assertIn("rate limit reached", self.replies[-1][1])
+        for _, text in self.replies:
+            self.assertIn("unknown model or agent", text)
+            self.assertNotIn("rate limit", text)
+
+    async def test_dispatchable_requests_are_rate_limited(self):
+        async def completion(model, prompt):
+            return Completion(text="done")
+
+        self.bot.model_client.complete = completion
+        message = IRCMessage(
+            tags={"account": "Alice"},
+            prefix="Alice!user@host",
+            command="PRIVMSG",
+            params=("#general", "AlicesHerder: ask test a prompt"),
+        )
+        for _ in range(7):
+            await self.bot._handle_privmsg(message)
+        await asyncio.gather(*self.bot.request_tasks)
+        # Completions land after the refusal, so scan all replies rather than
+        # assuming the limit message is last.
+        self.assertTrue(
+            any("rate limit reached" in text for _, text in self.replies)
+        )
+
+    async def test_oversized_prompt_does_not_consume_rate_limit(self):
+        oversized = IRCMessage(
+            tags={"account": "Alice"},
+            prefix="Alice!user@host",
+            command="PRIVMSG",
+            params=("#general", "AlicesHerder: ask test " + ("x" * 2049)),
+        )
+        for _ in range(7):
+            await self.bot._handle_privmsg(oversized)
+        for _, text in self.replies:
+            self.assertIn("2048-byte limit", text)
 
     async def test_slow_inference_does_not_block_other_commands(self):
         release = asyncio.Event()
 
         async def slow_completion(model, prompt):
             await release.wait()
-            return "complete"
+            return Completion(text="complete")
 
         self.bot.model_client.complete = slow_completion
         await self.bot._handle_privmsg(
@@ -139,7 +174,7 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
                 params=("#general", "AlicesHerder: ask test slow request"),
             )
         )
-        self.assertEqual(self.replies[-1][1], "Alice: working...")
+        self.assertRegex(self.replies[-1][1], r"^Alice: working\.\.\. \(req [0-9a-f]{12}\)$")
         self.assertEqual(self.bot.pending_count, 1)
 
         await self.bot._handle_privmsg(
@@ -208,6 +243,110 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
             )
         )
         self.assertEqual(self.replies, [])
+
+    async def _pending_agent_request(self):
+        async def agents():
+            return [
+                {
+                    "account": "SamsAgent",
+                    "display_name": "SamsAgent",
+                    "state": "active",
+                }
+            ]
+
+        self.bot._get_agents = agents
+        await self.bot._start_agent_request(
+            "#general", "Alice", "Alice", (await agents())[0], "prompt"
+        )
+        return next(iter(self.bot.agent_requests))
+
+    async def test_known_error_reason_is_rendered_specifically(self):
+        request_id = await self._pending_agent_request()
+        await self.bot._handle_agent_protocol(
+            "SamsAgent", f"HERDER/1 ERROR {request_id} busy"
+        )
+        self.assertIn("at capacity", self.replies[-1][1])
+
+    async def test_unknown_error_reason_falls_back_to_generic(self):
+        request_id = await self._pending_agent_request()
+        await self.bot._handle_agent_protocol(
+            "SamsAgent", f"HERDER/1 ERROR {request_id} ReadTimeout"
+        )
+        self.assertIn("reported an error", self.replies[-1][1])
+
+    async def test_undelivered_result_is_not_recorded_as_ok(self):
+        recorded = {}
+
+        class Recorder:
+            def start_request(self, *args, **kwargs):
+                return None
+
+            def finish_request(self, request_id, **kwargs):
+                recorded.update(kwargs)
+
+            def agent_seen(self, *args, **kwargs):
+                return None
+
+        async def dropped(target, text):
+            self.replies.append((target, text))
+            return False
+
+        async def completion(model, prompt):
+            return Completion(text="a result nobody receives")
+
+        self.bot.metrics = Recorder()
+        self.bot.model_client.complete = completion
+        await self.bot._run_local_request(
+            "abcdef123456",
+            "#general",
+            "Alice",
+            "Alice",
+            self.bot.config.models["test"],
+            "prompt",
+        )
+        self.bot._reply = dropped
+        recorded.clear()
+        await self.bot._run_local_request(
+            "abcdef123457",
+            "#general",
+            "Alice",
+            "Alice",
+            self.bot.config.models["test"],
+            "prompt",
+        )
+        self.assertEqual(recorded["status"], "undelivered")
+        self.assertEqual(recorded["output_lines"], 0)
+
+    async def test_local_usage_reaches_the_ledger(self):
+        recorded = {}
+
+        class Recorder:
+            def start_request(self, *args, **kwargs):
+                return None
+
+            def finish_request(self, request_id, **kwargs):
+                recorded.update(kwargs)
+
+            def agent_seen(self, *args, **kwargs):
+                return None
+
+        async def completion(model, prompt):
+            return Completion(
+                text="ok", prompt_tokens=7, completion_tokens=8, total_tokens=15
+            )
+
+        self.bot.metrics = Recorder()
+        self.bot.model_client.complete = completion
+        await self.bot._run_local_request(
+            "abcdef123458",
+            "#general",
+            "Alice",
+            "Alice",
+            self.bot.config.models["test"],
+            "prompt",
+        )
+        self.assertEqual(recorded["status"], "ok")
+        self.assertEqual(recorded["total_tokens"], 15)
 
     async def test_non_owner_cannot_control_herder(self):
         await self.bot._handle_privmsg(
