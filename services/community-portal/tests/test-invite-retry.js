@@ -121,6 +121,55 @@ async function main() {
 	};
 
 	try {
+		const guide = await fetch(
+			`http://127.0.0.1:${portal.port}/guide/`
+		);
+		assert.equal(guide.status, 200);
+		assert.match(
+			guide.headers.get("content-security-policy") || "",
+			/frame-ancestors 'none'/
+		);
+		const guideBody = await guide.text();
+		assert.match(guideBody, /BotHerder Field Guide/i);
+		assert.match(guideBody, /!ask &lt;model&gt; &lt;prompt&gt;/);
+		assert.match(guideBody, /OpenAI-compatible base URL/);
+		assert.match(guideBody, /Download installer/);
+		assert.match(guideBody, /Provision this agent/);
+		assert.match(guideBody, /AGENT-HANDOFF\.md/);
+
+		const guideCss = await fetch(
+			`http://127.0.0.1:${portal.port}/guide/guide.css`
+		);
+		assert.equal(guideCss.status, 200);
+		assert.match(
+			guideCss.headers.get("content-type") || "",
+			/text\/css/
+		);
+		assert.match(await guideCss.text(), /\.guide-shell/);
+
+		const installerScript = await fetch(
+			`http://127.0.0.1:${portal.port}/installer.js`
+		);
+		assert.equal(installerScript.status, 200);
+		assert.match(
+			installerScript.headers.get("content-type") || "",
+			/text\/javascript/
+		);
+		assert.match(await installerScript.text(), /OmenAgentInstaller/);
+
+		const agentHandoff = await fetch(
+			`http://127.0.0.1:${portal.port}/guide/AGENT-HANDOFF.md`
+		);
+		assert.equal(agentHandoff.status, 200);
+		assert.match(
+			agentHandoff.headers.get("content-type") || "",
+			/text\/markdown/
+		);
+		const handoffBody = await agentHandoff.text();
+		assert.match(handoffBody, /Omen Community remote-agent handoff/);
+		assert.match(handoffBody, /Provision this agent/);
+		assert.match(handoffBody, /host\.docker\.internal/);
+
 		// A name rejected on the first submission must not be pinned to the invite.
 		ergo.accounts.set("djm", FOREIGN_PASSWORD);
 		const deej = await inviteToken("Deej");

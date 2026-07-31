@@ -28,6 +28,11 @@ const elements = Object.fromEntries(
 		"quassel-port",
 		"agent-account",
 		"agent-success-herder",
+		"download-windows-installer",
+		"download-unix-installer",
+		"powershell-install-command",
+		"bash-install-command",
+		"agent-test-command",
 		"download-agent-env",
 		"download-compose",
 		"download-dockerfile",
@@ -153,6 +158,13 @@ function finishAgent(result) {
 	hide(elements.working);
 	elements.agentAccount.textContent = result.account;
 	elements.agentSuccessHerder.textContent = result.herder_account;
+	const names = OmenAgentInstaller.filenames(result);
+	elements.powershellInstallCommand.textContent =
+		`powershell -ExecutionPolicy Bypass -File "$HOME\\Downloads\\${names.powershell}"`;
+	elements.bashInstallCommand.textContent =
+		`bash "$HOME/Downloads/${names.bash}"`;
+	elements.agentTestCommand.textContent =
+		`${result.herder_account}: ask ${result.agent_name} Say hello in one sentence.`;
 	const base = result.agent_kit_base;
 	elements.downloadCompose.href = `${base}/compose.yaml`;
 	elements.downloadDockerfile.href = `${base}/Dockerfile`;
@@ -238,6 +250,20 @@ elements.redeemAgent.addEventListener("click", async () => {
 elements.downloadAgentEnv.addEventListener("click", () => {
 	if (agentResult) {
 		downloadText("agent.env", envText(agentResult));
+	}
+});
+
+elements.downloadWindowsInstaller.addEventListener("click", () => {
+	if (agentResult) {
+		const names = OmenAgentInstaller.filenames(agentResult);
+		downloadText(names.powershell, OmenAgentInstaller.powershell(agentResult));
+	}
+});
+
+elements.downloadUnixInstaller.addEventListener("click", () => {
+	if (agentResult) {
+		const names = OmenAgentInstaller.filenames(agentResult);
+		downloadText(names.bash, OmenAgentInstaller.bash(agentResult));
 	}
 });
 

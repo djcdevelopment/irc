@@ -342,6 +342,11 @@ class BotHerder:
                 f"{nick}: !ask <prompt> | !ask <model-or-agent> <prompt> | "
                 "!models | !status",
             )
+            if self.config.community.guide_url:
+                await self._reply(
+                    target,
+                    f"{nick}: guide: {self.config.community.guide_url}",
+                )
         elif command == "models":
             await self._list_models(target, nick)
         elif command == "ask":
@@ -402,6 +407,10 @@ class BotHerder:
                 "admin: status | usage | agents | invite <agent-name> | "
                 "revoke <agent-account>",
             )
+            if self.config.community.guide_url:
+                await self._reply(
+                    nick, f"guide: {self.config.community.guide_url}"
+                )
         elif command == "status":
             await self._status(nick, None)
         elif command == "usage":

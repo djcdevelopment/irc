@@ -43,20 +43,38 @@ The same credential works in Quassel Monolithic/Standalone:
 - SASL password: the one-time displayed password
 - automatic channels: `#general,#ops`
 
+The public member guide is available before or after login:
+
+`https://am4.tail8e749c.ts.net/guide/`
+
+A credential-free Markdown handoff for a member's coding agent is:
+
+`https://am4.tail8e749c.ts.net/guide/AGENT-HANDOFF.md`
+
 ## BotHerder interaction
 
-Shared-channel commands must name the intended Herder. This prevents every
-member's bot from answering the same message:
+The same commands, examples, private controls, remote-agent setup, limits, and
+troubleshooting steps are presented as a mobile-friendly webpage at
+`https://am4.tail8e749c.ts.net/guide/`. The bot also returns this link from
+`!help`.
+
+Your own Herder answers bare `!` commands. You may also name the intended
+Herder explicitly:
 
 ```text
+!help
+!models
+!ask name one architecture pattern
+!status
 SamsBotHerder: help
 SamsBotHerder: models
 SamsBotHerder: ask gpt-oss-120b name one architecture pattern
 SamsBotHerder: status
 ```
 
-The default access mode is owner-only. Other members receive no response from
-that Herder.
+A bare command is answered only by the sender's personal Herder. The default
+access mode is owner-only, so other members also receive no response when they
+explicitly address that Herder.
 
 Send private administrative commands with `/msg SamsBotHerder ...`:
 
@@ -77,15 +95,32 @@ return usage, the result says `not reported`; it never fabricates zero.
 Expected owner time: about five to fifteen minutes.
 
 1. Privately send `invite <agent-name>` to the personal BotHerder.
-2. Send the returned 24-hour, single-use URL to the operator of that agent.
-3. The operator downloads `agent.env` and the five adapter-kit files.
-4. They edit only `OPENAI_BASE_URL`, `OPENAI_API_KEY`, and `OPENAI_MODEL`.
-5. They run `docker compose up -d --build`.
-6. Address the agent through the Herder:
+2. Open the returned 24-hour, single-use URL **on the computer that will run
+   the agent**. That machine must host or reach the model endpoint and remain
+   online.
+3. Review the identity and click **Provision this agent**. The installer
+   buttons appear on the resulting success page, not on the general guide.
+4. Click **Download PowerShell installer** on Windows or **Download Bash
+   installer** on macOS/Linux.
+5. Open PowerShell or Terminal on that same computer. Copy the single command
+   displayed directly below the button and run it.
+6. The installer privately prompts for the OpenAI-compatible base URL, model
+   ID, and provider key. It downloads the small kit, creates a private
+   `~/OmenAgent/ACCOUNT` directory, validates and starts Compose, waits for IRC,
+   and removes its credential-bearing downloaded copy after success.
+7. Send the exact test message printed by the installer:
 
    ```text
    SamsBotHerder: ask MyRemoteAgent explain one architecture pattern
    ```
+
+No repository checkout or Docker image download from AM4 is required. Docker
+builds the small adapter locally from its pinned base image. For a model on the
+same computer, use `http://host.docker.internal:PORT/v1`; container-local
+`127.0.0.1` and `localhost` are incorrect.
+
+The setup page retains the six-file manual process under an **Advanced**
+disclosure, and the downloaded `RUNBOOK.md` contains the complete fallback.
 
 The adapter opens outbound trusted-TLS IRC. No inbound port, router rule, VPN
 membership, or provider-key upload is needed. Each agent gets its own non-oper

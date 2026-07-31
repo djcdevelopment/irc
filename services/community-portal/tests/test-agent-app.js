@@ -7,21 +7,19 @@ class ClassList {
 	constructor(initial = []) {
 		this.values = new Set(initial);
 	}
-
 	add(value) {
 		this.values.add(value);
 	}
-
 	remove(value) {
 		this.values.delete(value);
 	}
-
 	contains(value) {
 		return this.values.has(value);
 	}
 }
 
 function element(id) {
+	const listeners = new Map();
 	return {
 		id,
 		classList: new ClassList(["hidden"]),
@@ -30,7 +28,12 @@ function element(id) {
 		value: "",
 		href: "",
 		disabled: false,
-		addEventListener() {},
+		addEventListener(name, callback) {
+			listeners.set(name, callback);
+		},
+		async dispatch(name) {
+			return listeners.get(name)?.();
+		},
 	};
 }
 
@@ -83,18 +86,41 @@ global.document = {
 		return [];
 	},
 };
-global.location = {hash: "#test-token", pathname: "/join/"};
+global.location = {hash: "#agent-token", pathname: "/join/"};
 global.history = {replaceState() {}};
+global.OmenAgentInstaller = require("../public/installer.js");
+
+let call = 0;
 global.fetch = async (pathValue, options) => {
-	assert.equal(pathValue, "api/invites/preview");
+	call += 1;
 	assert.equal(options.method, "POST");
+	if (call === 1) {
+		assert.equal(pathValue, "api/invites/preview");
+		return {
+			ok: true,
+			async json() {
+				return {
+					kind: "agent",
+					agent_name: "Scout",
+					owner_account: "alice",
+					herder_account: "AlicesBotHerder",
+				};
+			},
+		};
+	}
+	assert.equal(pathValue, "api/invites/redeem");
 	return {
 		ok: true,
 		async json() {
 			return {
-				kind: "member",
-				display_name: "Friend",
-				locked_names: {herder_account: "FriendsBotHerder"},
+				irc_host: "irc.example",
+				irc_port: 8443,
+				account: "alice-scout",
+				password: "one-time-secret",
+				herder_account: "AlicesBotHerder",
+				owner_account: "alice",
+				agent_name: "Scout",
+				agent_kit_base: "https://community.example/join/agent-kit",
 			};
 		},
 	};
@@ -102,20 +128,21 @@ global.fetch = async (pathValue, options) => {
 
 require(path.resolve(__dirname, "../public/app.js"));
 
-setImmediate(() => {
-	assert.equal(elements.get("title").textContent, "Friend, you’re invited");
-	assert.equal(
-		elements.get("member-form").classList.contains("hidden"),
-		false
+setImmediate(async () => {
+	assert.equal(elements.get("agent-form").classList.contains("hidden"), false);
+	await elements.get("redeem-agent").dispatch("click");
+	assert.equal(elements.get("agent-success").classList.contains("hidden"), false);
+	assert.match(
+		elements.get("powershell-install-command").textContent,
+		/Install-OmenAgent-alice-scout\.ps1/
+	);
+	assert.match(
+		elements.get("bash-install-command").textContent,
+		/install-omen-agent-alice-scout\.sh/
 	);
 	assert.equal(
-		elements.get("expectations").classList.contains("hidden"),
-		false
+		elements.get("agent-test-command").textContent,
+		"AlicesBotHerder: ask Scout Say hello in one sentence."
 	);
-	assert.equal(elements.get("herder-account").value, "FriendsBotHerder");
-	assert.equal(elements.get("herder-account").disabled, true);
-	assert.equal(elements.get("herder-account").dataset.edited, "true");
-	assert.equal(elements.get("account").disabled, false);
-	assert.equal(elements.get("locked-note").classList.contains("hidden"), false);
-	process.stdout.write("portal browser-script smoke: PASS\n");
+	process.stdout.write("portal agent installer flow: PASS\n");
 });

@@ -129,7 +129,7 @@ services:
       thelounge:
         condition: service_healthy
     ports:
-      # Tailscale Funnel publishes only /join; this backend stays on loopback.
+      # Tailscale Funnel publishes /join and /guide; this backend stays on loopback.
       - name: join-portal
         target: 9010
         published: "9010"

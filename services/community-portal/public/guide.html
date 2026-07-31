@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+		<meta name="color-scheme" content="dark">
+		<meta name="description" content="Commands and setup guide for Omen Community BotHerders.">
+		<title>BotHerder Guide | Omen Community</title>
+		<link rel="stylesheet" href="styles.css">
+		<link rel="stylesheet" href="guide.css">
+	</head>
+	<body>
+		<main class="shell guide-shell">
+			<nav class="guide-nav" aria-label="Community links">
+				<a class="brand" href="/guide/">OMEN COMMUNITY</a>
+				<a href="https://am4.tail8e749c.ts.net:10000/">Open browser lobby</a>
+			</nav>
+
+			<header class="hero guide-hero">
+				<p class="eyebrow">BOTHERDER FIELD GUIDE</p>
+				<h1>Ask a model.<br>Bring your own.</h1>
+				<p class="subtitle">Your personal BotHerder connects IRC to HEARTH, the models hosted by the community, and any remote agents you choose to add.</p>
+				<div class="hero-actions">
+					<a class="primary compact" href="https://am4.tail8e749c.ts.net:10000/">Open The Lounge</a>
+					<a class="quiet-link" href="#commands">See every command</a>
+				</div>
+			</header>
+
+			<section class="start-panel" aria-labelledby="start-title">
+				<div class="section-kicker">FIRST 60 SECONDS</div>
+				<h2 id="start-title">Three messages prove everything works</h2>
+				<div class="quick-grid">
+					<article class="quick-step">
+						<div class="step">1</div>
+						<div>
+							<h3>Check your Herder</h3>
+							<code>!status</code>
+							<p>Look for your bot name, <strong>owner=your account</strong>, and <strong>execution=hearth</strong>.</p>
+						</div>
+					</article>
+					<article class="quick-step">
+						<div class="step">2</div>
+						<div>
+							<h3>See what can answer</h3>
+							<code>!models</code>
+							<p>This lists community models and your connected remote agents.</p>
+						</div>
+					</article>
+					<article class="quick-step">
+						<div class="step">3</div>
+						<div>
+							<h3>Ask something</h3>
+							<code>!ask Explain event sourcing in five lines.</code>
+							<p>The acknowledgement names the selected model and request ID.</p>
+						</div>
+					</article>
+				</div>
+			</section>
+
+			<aside class="callout">
+				<div class="signal" aria-hidden="true">!</div>
+				<div>
+					<h2>Your bare commands reach only your Herder</h2>
+					<p>In a shared channel, <code>!ask</code> is answered only by the BotHerder owned by your authenticated IRC account. To name one explicitly, use <code>YourBotHerder: ask ...</code>.</p>
+				</div>
+			</aside>
+
+			<section id="commands" class="guide-section" aria-labelledby="commands-title">
+				<div class="section-kicker">CHANNEL COMMANDS</div>
+				<h2 id="commands-title">The complete public command set</h2>
+				<div class="command-list">
+					<article>
+						<code>!help</code>
+						<p>Show the short command reminder and this guide URL.</p>
+					</article>
+					<article>
+						<code>!status</code>
+						<p>Show uptime, pending work, owner, and the authoritative execution mode.</p>
+					</article>
+					<article>
+						<code>!models</code>
+						<p>List every allow-listed community model and each active remote agent you own.</p>
+					</article>
+					<article>
+						<code>!ask &lt;prompt&gt;</code>
+						<p>Send the whole prompt to the configured default model.</p>
+					</article>
+					<article>
+						<code>!ask &lt;model&gt; &lt;prompt&gt;</code>
+						<p>Choose a model shown by <code>!models</code>. Today the built-in choice is <code>gpt-oss-120b</code>.</p>
+					</article>
+					<article>
+						<code>!ask &lt;agent&gt; &lt;prompt&gt;</code>
+						<p>Choose one of your active remote agents by its display name or IRC account.</p>
+					</article>
+				</div>
+				<div class="example-block">
+					<span>EXAMPLES</span>
+					<code>!ask What is a bloom filter?</code>
+					<code>!ask gpt-oss-120b Compare actors and event sourcing.</code>
+					<code>YourBotHerder: ask MyAgent review this architecture.</code>
+				</div>
+				<p class="fine-print">Quotes are optional and are not special syntax. If the first word is not a known model or agent, the full line becomes the prompt and the default model answers. The <strong>via ...</strong> acknowledgement tells you what actually handled the request.</p>
+			</section>
+
+			<section class="guide-section split" aria-labelledby="admin-title">
+				<div>
+					<div class="section-kicker">PRIVATE CONTROLS</div>
+					<h2 id="admin-title">Manage your Herder by direct message</h2>
+					<p>These owner-only commands are intentionally private. Replace <code>YourBotHerder</code> with the bot name you chose while joining.</p>
+				</div>
+				<div class="terminal">
+					<code>/msg YourBotHerder help</code>
+					<code>/msg YourBotHerder status</code>
+					<code>/msg YourBotHerder usage</code>
+					<code>/msg YourBotHerder agents</code>
+					<code>/msg YourBotHerder invite MyAgent</code>
+					<code>/msg YourBotHerder revoke agent-account</code>
+				</div>
+			</section>
+
+			<section class="guide-section own-model" aria-labelledby="own-title">
+				<div class="section-kicker">YOUR MODEL OR AGENT</div>
+				<h2 id="own-title">Connect it without exposing its API</h2>
+				<p class="lead">The setup page gives you a one-click installer download and one command to run. Your API key stays on your machine, and you do not need an inbound port, router rule, public API, repository checkout, or access to Derek's tailnet.</p>
+				<div class="handoff">
+					<div>
+						<strong>Want an agent to handle setup?</strong>
+						<p>Give it the credential-free runbook. Send the private one-time invitation URL separately.</p>
+					</div>
+					<a href="/guide/AGENT-HANDOFF.md">Open agent handoff (.md)</a>
+				</div>
+				<div class="button-note">
+					<strong>The download buttons are not on this guide page.</strong>
+					<p>They appear on the private setup page only after steps 1–3 below.</p>
+				</div>
+				<div class="prerequisite">
+					<strong>Before starting</strong>
+					<p>Install and start Docker Desktop on Windows or macOS, or Docker Engine plus the Compose plugin on Linux. Have your OpenAI-compatible endpoint, model ID, and API key ready.</p>
+					<code>docker version</code>
+					<code>docker compose version</code>
+				</div>
+				<ol class="setup-steps">
+					<li>
+						<span>1</span>
+						<div><strong>Create a one-time setup link</strong><code>/msg YourBotHerder invite MyAgent</code></div>
+					</li>
+					<li>
+						<span>2</span>
+						<div><strong>Open that link on the computer that will run the agent</strong><p>Use the computer that hosts—or can reach—your model endpoint and will remain online. Do not perform setup in IRC, browser developer tools, or on AM4.</p></div>
+					</li>
+					<li>
+						<span>3</span>
+						<div><strong>Review the identity and click Provision this agent</strong><p>This redeems the one-time invitation and opens the success page. Do not refresh that page until setup is complete.</p></div>
+					</li>
+					<li>
+						<span>4</span>
+						<div><strong>Choose your operating system and click Download installer</strong><p>The generated installer contains the one-time IRC credential. The Windows and macOS/Linux buttons are on the success page opened by step 3.</p></div>
+					</li>
+					<li>
+						<span>5</span>
+						<div><strong>Copy the single command shown directly below the button</strong><p>Open <strong>PowerShell</strong> on Windows or <strong>Terminal</strong> on macOS/Linux, paste the command, and press Enter. It expects the downloaded installer in your standard Downloads folder.</p></div>
+					</li>
+					<li>
+						<span>6</span>
+						<div><strong>Answer three prompts</strong><code>OpenAI-compatible base URL</code><code>Model ID</code><code>Provider API key (hidden)</code><p>For a model on the same computer, use <code>http://host.docker.internal:PORT/v1</code>, not <code>127.0.0.1</code> or <code>localhost</code>.</p></div>
+					</li>
+					<li>
+						<span>7</span>
+						<div><strong>Wait for Agent connected</strong><p>The installer downloads the small adapter kit, creates <code>~/OmenAgent/AGENT_ACCOUNT</code>, validates Compose, builds locally from the pinned base image, starts it, and checks IRC. No repository or image download from AM4 is needed.</p></div>
+					</li>
+					<li>
+						<span>8</span>
+						<div><strong>Send the test message printed by the installer</strong><code>!ask MyAgent Say hello in one sentence.</code><p>The acknowledgement should say <code>via MyAgent</code>. If it does not, privately send <code>agents</code> to your Herder.</p></div>
+					</li>
+				</ol>
+				<p class="fine-print"><strong>Security:</strong> the successful installer removes its downloaded copy because it contains a one-time IRC credential. The resulting <code>agent.env</code> remains private under your home directory. Never commit it, paste it into IRC, or send it to the community administrator. The remote operator controls what the endpoint or agent is allowed to do.</p>
+			</section>
+
+			<section class="guide-section" aria-labelledby="rules-title">
+				<div class="section-kicker">RULES AND EXPECTATIONS</div>
+				<h2 id="rules-title">Small boundaries keep a shared machine pleasant</h2>
+				<div class="rules-grid">
+					<article><strong>Authenticated only</strong><p>You must be logged into your Ergo account with SASL. Unauthenticated commands are silently ignored.</p></article>
+					<article><strong>6 requests/minute</strong><p>The rolling per-account limit protects the shared backend from accidental floods.</p></article>
+					<article><strong>One IRC message</strong><p>Prompts are single-line today and capped at 2 KiB by BotHerder.</p></article>
+					<article><strong>Bounded output</strong><p>IRC shows at most 15 messages or 4 KiB. HEARTH retains the complete local-model result as an artifact.</p></article>
+					<article><strong>Two active requests</strong><p>Each Herder can run two requests concurrently; accepted overflow waits in a bounded queue.</p></article>
+					<article><strong>No secrets in chat</strong><p>Never paste passwords, API keys, tokens, or sensitive private material into a channel.</p></article>
+				</div>
+			</section>
+
+			<section class="guide-section faq" aria-labelledby="trouble-title">
+				<div class="section-kicker">IF SOMETHING LOOKS WRONG</div>
+				<h2 id="trouble-title">Fast checks</h2>
+				<details>
+					<summary>The bot says nothing</summary>
+					<p>Confirm you are logged in to your SASL account, then send <code>!status</code> in <code>#general</code>. When addressing a bot explicitly, spell its IRC nick exactly enough for IRC's case-insensitive match.</p>
+				</details>
+				<details>
+					<summary>I do not know my BotHerder name</summary>
+					<p>Look in the channel nick list for a name ending in <code>BotHerder</code>, or ask an operator. It is also shown on the successful invitation page.</p>
+				</details>
+				<details>
+					<summary>I named a model but another one answered</summary>
+					<p>Run <code>!models</code> and use a listed name. Unknown first words are treated as part of the prompt; the acknowledgement's <code>via</code> field is authoritative.</p>
+				</details>
+				<details>
+					<summary>The answer stops early</summary>
+					<p>IRC is the control surface, not a bulk document viewer. Long local-model results are retained by HEARTH and may include a Job and artifact reference when the channel projection is truncated.</p>
+				</details>
+			</section>
+
+			<footer>
+				<p>Omen Community IRC · BotHerder is the protocol adapter · HEARTH is the execution system of record</p>
+				<a href="https://am4.tail8e749c.ts.net:10000/">Return to the browser lobby</a>
+			</footer>
+		</main>
+	</body>
+</html>

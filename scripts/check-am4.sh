@@ -158,12 +158,41 @@ elif [[ "$require_funnel" == true ]]; then
 else
     warn "Funnel 8443 is not enabled yet"
 fi
-if grep -q '10000' <<<"$funnel_status" && grep -q '/join' <<<"$funnel_status"; then
-    pass "Tailscale Funnel publishes the browser lobby and /join"
+if grep -q '10000' <<<"$funnel_status" &&
+    grep -q '/join' <<<"$funnel_status" &&
+    grep -q '/guide' <<<"$funnel_status"; then
+    pass "Tailscale Funnel publishes the browser lobby, /join, and /guide"
 elif [[ "$require_funnel" == true ]]; then
-    fail "Tailscale Funnel does not show both lobby port 10000 and /join"
+    fail "Tailscale Funnel does not show lobby port 10000, /join, and /guide"
 else
     warn "Funnel browser paths are not enabled yet"
+fi
+
+tailscale_hostname="$(
+    tailscale status --json |
+        python3 -c 'import json, sys; print(json.load(sys.stdin)["Self"]["DNSName"].rstrip("."))'
+)"
+[[ -n "$tailscale_hostname" ]] || fail "Could not detect the Tailscale hostname"
+guide_url="https://${tailscale_hostname}/guide/"
+if guide_body="$(curl --fail --silent --show-error --max-time 10 "$guide_url")"; then
+    grep -qi 'BotHerder Field Guide' <<<"$guide_body" ||
+        fail "Public BotHerder guide returned unexpected content"
+    pass "Public BotHerder guide is reachable"
+elif [[ "$require_funnel" == true ]]; then
+    fail "Public BotHerder guide is not reachable"
+else
+    warn "Public BotHerder guide is not reachable yet"
+fi
+
+handoff_url="${guide_url}AGENT-HANDOFF.md"
+if handoff_body="$(curl --fail --silent --show-error --max-time 10 "$handoff_url")"; then
+    grep -qi 'Omen Community remote-agent handoff' <<<"$handoff_body" ||
+        fail "Public agent handoff returned unexpected content"
+    pass "Public Markdown agent handoff is reachable"
+elif [[ "$require_funnel" == true ]]; then
+    fail "Public Markdown agent handoff is not reachable"
+else
+    warn "Public Markdown agent handoff is not reachable yet"
 fi
 
 if [[ "$persistence" == true ]]; then

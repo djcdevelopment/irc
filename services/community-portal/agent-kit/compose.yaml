@@ -6,6 +6,10 @@ services:
     restart: unless-stopped
     env_file:
       - agent.env
+    # Docker Desktop supplies this hostname automatically. This explicit
+    # mapping gives Linux Docker Engine the same host-model address.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=1m

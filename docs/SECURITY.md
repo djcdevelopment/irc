@@ -25,10 +25,11 @@ binding was added for IRC.
 | 8443/TCP | Public Funnel endpoint | TLS; public CA certificate | Quassel and native IRC clients |
 | 10000/TCP | Public Funnel endpoint | HTTPS; public CA certificate | Private-mode The Lounge login |
 | 443 `/join` | Public Funnel path | HTTPS; public CA certificate | One-time onboarding portal |
+| 443 `/guide` | Public Funnel path | HTTPS; public CA certificate | Static, read-only member documentation |
 | 6668/TCP | `127.0.0.1` on AM4 | Plain after local TLS termination; PROXY v2 required | Funnel → Ergo |
 | 6667/TCP | Compose network plus `127.0.0.1` on AM4 | Plain internal transport | The Lounge, BotHerder, portal, and local recovery |
 | 9000/TCP | `127.0.0.1` on AM4 | HTTP | Funnel backend for The Lounge |
-| 9010/TCP | `127.0.0.1` on AM4 | HTTP | Funnel backend for `/join` and internal Herder API |
+| 9010/TCP | `127.0.0.1` on AM4 | HTTP | Funnel backend for `/join`, `/guide`, and internal Herder API |
 | 8082/TCP | Existing AM4 model listener; UFW-restricted | HTTP plus Bearer authentication | BotHerder and existing LAN tooling |
 | 8443/TCP on OMEN | Tailnet-only Tailscale Serve | Trusted HTTPS | BotHerder → HEARTH MCP control plane |
 | 6697/TCP | Not published on AM4 | Not used | Retained only by the stopped OMEN rollback |
@@ -100,6 +101,13 @@ The public Lounge remains private-mode and has no shared login. The join portal
 stores only invite hashes. A generated credential is AES-256-GCM encrypted
 only while retrying an interrupted provisioning operation and is cleared at
 redemption. Passwords are displayed once.
+
+Remote-agent PowerShell and Bash installers are generated entirely in the
+recipient's browser from that one-time redemption response. The provider key
+is requested locally by the installer and never sent to the portal. A
+successful installer deletes its downloaded script because the script contains
+the one-time IRC credential; `agent.env` remains private under the recipient's
+home directory.
 
 ## BotHerder
 

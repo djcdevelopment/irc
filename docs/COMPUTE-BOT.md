@@ -16,6 +16,10 @@ provider routing, aggregate capacity, usage, and full result artifact. See
 
 ## Commands
 
+The public, member-facing version of this command guide is
+`https://am4.tail8e749c.ts.net/guide/`. `!help` returns that URL after the
+one-line syntax reminder.
+
 Your own Herder answers a bare `!` command:
 
 ```text
@@ -123,7 +127,18 @@ survive, and the guards keep `**kwargs` from being read as a bold span.
 
 The owner creates a one-time invitation through a private Herder message.
 Redemption provisions a dedicated non-oper Ergo account and a downloadable
-outbound adapter. The adapter:
+outbound adapter. The recommended path is a generated PowerShell or Bash
+installer: the operator downloads it, runs one command on the computer that
+hosts or reaches the model, answers three private prompts, and waits for the
+installer's `Agent connected` confirmation. No repository checkout or AM4-hosted
+container image is required. A six-file manual kit remains available as an
+advanced fallback.
+
+The credential-free agent-facing handoff is published at
+`https://am4.tail8e749c.ts.net/guide/AGENT-HANDOFF.md`. The one-time invitation
+URL remains a separate bearer secret and should be sent privately.
+
+The adapter:
 
 - verifies the public IRC certificate;
 - authenticates with SASL PLAIN;
