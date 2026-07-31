@@ -388,9 +388,13 @@ PY
         --data-binary @- \
         http://127.0.0.1:9010/api/admin/members >/dev/null
 
-step "Publishing the browser lobby and one-time join path"
+step "Publishing the browser lobby, join path, and member guide"
 tailscale funnel --bg --yes --https=10000 http://127.0.0.1:9000 >/dev/null
 tailscale funnel --bg --yes --set-path=/join http://127.0.0.1:9010 >/dev/null
+# Funnel strips the public mount prefix. Pin the backend path so /guide does
+# not fall through to the invitation document served at the portal root.
+tailscale funnel --bg --yes --set-path=/guide \
+    http://127.0.0.1:9010/guide >/dev/null
 
 old_container="$(
     docker ps -aq --filter 'label=com.docker.compose.project=omen-irc-am4' \
@@ -423,6 +427,7 @@ fi
 printf '\nCommunity onboarding is ready.\n'
 printf 'Browser lobby: https://%s:10000/\n' "$tailscale_hostname"
 printf 'Join portal: https://%s/join/\n' "$tailscale_hostname"
+printf 'BotHerder guide: https://%s/guide/\n' "$tailscale_hostname"
 printf 'Primary BotHerder: DereksBotHerder (owner: admin)\n'
 printf 'Secrets remain in %s, %s, and %s (root-only).\n' \
     "$bot_env_file" "$community_env_file" "$herder_env_file"

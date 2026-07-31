@@ -128,6 +128,30 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
         await self._channel("!models")
         self.assertEqual(self.replies, [("#general", "Alice: test - Test model")])
 
+    async def test_help_links_to_configured_public_guide(self):
+        self.bot.config = replace(
+            self.bot.config,
+            community=replace(
+                self.bot.config.community,
+                guide_url="https://community.example/guide/",
+            ),
+        )
+        await self._channel("!help")
+        self.assertEqual(
+            self.replies,
+            [
+                (
+                    "#general",
+                    "Alice: !ask <prompt> | !ask <model-or-agent> <prompt> | "
+                    "!models | !status",
+                ),
+                (
+                    "#general",
+                    "Alice: guide: https://community.example/guide/",
+                ),
+            ],
+        )
+
     async def test_bare_command_from_non_owner_is_ignored(self):
         await self._channel("!models", account="Bob")
         self.assertEqual(self.replies, [])

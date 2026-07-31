@@ -9,6 +9,8 @@ COPY agent-kit /app/agent-kit
 COPY tests /app/tests
 
 RUN node /app/tests/test-public-app.js \
+    && node /app/tests/test-agent-installers.js \
+    && node /app/tests/test-agent-app.js \
     && node /app/tests/test-invite-retry.js \
     && chown -R node:node /app
 

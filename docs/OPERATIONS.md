@@ -161,6 +161,7 @@ Disable browser onboarding independently:
 ```bash
 sudo tailscale funnel --https=10000 off
 sudo tailscale funnel --set-path=/join off
+sudo tailscale funnel --set-path=/guide off
 ```
 
 Remove containers and their private network without deleting state:

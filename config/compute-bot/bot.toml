@@ -17,6 +17,7 @@ reconnect_max_seconds = 60
 
 [community]
 portal_url = "http://127.0.0.1:9010"
+guide_url = "https://am4.tail8e749c.ts.net/guide/"
 internal_token_env = "COMMUNITY_INTERNAL_TOKEN"
 # Agentic remote agents run for minutes, not seconds. Kept above the adapter's
 # own OPENAI_TIMEOUT_SECONDS default (600) so the agent's specific error arrives

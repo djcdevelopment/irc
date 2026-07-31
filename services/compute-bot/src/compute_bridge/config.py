@@ -53,6 +53,7 @@ class CommunityConfig:
     internal_token_env: str
     internal_token: str = field(repr=False)
     agent_timeout_seconds: float
+    guide_url: str = ""
 
 
 @dataclass(frozen=True)
@@ -280,6 +281,24 @@ def _load_community(raw: dict, environ: Mapping[str, str]) -> CommunityConfig:
             "required community secret environment variable is unset: "
             f"{internal_token_env}"
         )
+    guide_url = _optional_text(table, "guide_url", "community").rstrip("/")
+    if guide_url:
+        guide = urlparse(guide_url)
+        if (
+            guide.scheme not in {"http", "https"}
+            or not guide.hostname
+            or guide.username
+            or guide.password
+            or guide.query
+            or guide.fragment
+        ):
+            raise ConfigError("community.guide_url must be a public HTTP(S) URL")
+        if guide.scheme != "https" and guide.hostname not in {
+            "127.0.0.1",
+            "localhost",
+            "::1",
+        }:
+            raise ConfigError("non-loopback community.guide_url must use HTTPS")
     return CommunityConfig(
         portal_url=portal_url,
         internal_token_env=internal_token_env,
@@ -287,6 +306,7 @@ def _load_community(raw: dict, environ: Mapping[str, str]) -> CommunityConfig:
         agent_timeout_seconds=_number(
             table, "agent_timeout_seconds", "community", default=120, minimum=5
         ),
+        guide_url=f"{guide_url}/" if guide_url else "",
     )
 
 

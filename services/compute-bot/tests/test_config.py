@@ -19,6 +19,7 @@ channels = ["#general"]
 
 [community]
 portal_url = "http://127.0.0.1:9010"
+guide_url = "https://community.example/guide/"
 internal_token_env = "COMMUNITY_INTERNAL_TOKEN"
 
 [limits]
@@ -71,6 +72,9 @@ class ConfigTests(unittest.TestCase):
         config = self._load()
         self.assertEqual(config.models["gpt-oss-120b"].effective_max_tokens, 512)
         self.assertEqual(config.limits.irc_payload_bytes, 360)
+        self.assertEqual(
+            config.community.guide_url, "https://community.example/guide/"
+        )
         self.assertNotIn("irc-secret", repr(config))
         self.assertNotIn("model-secret", repr(config))
         self.assertNotIn("internal-secret", repr(config))
@@ -104,6 +108,14 @@ class ConfigTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ConfigError, "endpoint"):
             self._load(models=invalid)
+
+    def test_remote_guide_url_requires_https(self):
+        invalid = BOT_CONFIG.replace(
+            "https://community.example/guide/",
+            "http://community.example/guide/",
+        )
+        with self.assertRaisesRegex(ConfigError, "guide_url"):
+            self._load(bot=invalid)
 
     def test_model_name_is_safe(self):
         invalid = MODELS_CONFIG.replace(

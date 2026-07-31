@@ -73,10 +73,11 @@ security tradeoff of exposing an agent's API server to a chat channel.
 |---|---|---|---|
 | Public IRC | `am4.tail8e749c.ts.net:8443` | Trusted TLS 1.3 through Tailscale Funnel | Internet; SASL account required |
 | Join portal | `https://am4.tail8e749c.ts.net/join/` | Trusted HTTPS through Funnel | One-time token required |
+| BotHerder guide | `https://am4.tail8e749c.ts.net/guide/` | Trusted HTTPS through Funnel | Public, read-only member documentation |
 | Browser lobby | `https://am4.tail8e749c.ts.net:10000/` | Trusted HTTPS through Funnel | Personal Lounge login required |
 | Funnel backend | `127.0.0.1:6668` on AM4 | Plain IRC plus PROXY v2 after TLS termination | Local tailscaled only |
 | The Lounge backend | `127.0.0.1:9000` on AM4 | HTTP after local TLS termination | Local tailscaled only |
-| Join backend | `127.0.0.1:9010` on AM4 | HTTP after local TLS termination | Local tailscaled only |
+| Community portal backend | `127.0.0.1:9010` on AM4 | HTTP after local TLS termination | Loopback backend for `/join`, `/guide`, and internal Herder APIs |
 | Internal Ergo | `ergo:6667` | Plain IRC | Compose network only |
 | BotHerder IRC handoff | `127.0.0.1:6667` on AM4 | Plain IRC | Host-networked BotHerder only |
 | Canonical execution | `omen.tail8e749c.ts.net:8443/mcp` from AM4 | Tailnet-only trusted HTTPS through Tailscale Serve | BotHerder's least-privilege HEARTH adapter |

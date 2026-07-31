@@ -94,12 +94,26 @@ code { font-family: "Cascadia Code", "SFMono-Regular", Consolas, monospace; }
 .copy-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .copy-row button { padding: 7px 10px; border: 1px solid #4f7568; border-radius: 7px; background: transparent; color: var(--text); cursor: pointer; }
 .link-button { margin: 12px 0; }
+.guide-link { display: block; margin: 16px 0; color: var(--green); font-weight: 750; text-align: center; text-decoration: none; }
+.guide-link:hover { text-decoration: underline; }
 .next { margin: 18px 0; padding: 14px 16px; border-left: 4px solid var(--blue); background: rgba(114, 168, 255, .1); }
 .next p { margin: 0 0 10px; }
 details { margin-top: 20px; color: var(--muted); }
 summary { color: var(--text); cursor: pointer; font-weight: 750; }
 .download-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 12px; }
 .download-grid a { padding: 12px; border: 1px solid #365248; border-radius: 9px; color: var(--green); text-decoration: none; }
+.installer-panel { margin: 22px 0; padding: 20px; border: 1px solid rgba(114, 168, 255, .34); border-radius: 14px; background: rgba(114, 168, 255, .08); }
+.installer-panel > p { color: var(--muted); line-height: 1.55; }
+.installer-panel .where { margin-top: 0; color: var(--text); }
+.agent-handoff-link { color: var(--green); font-weight: 800; }
+.installer-choice { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin: 18px 0; }
+.installer-choice section { min-width: 0; padding: 16px; border: 1px solid #34435d; border-radius: 12px; background: #0a101a; }
+.installer-choice h3 { margin: 0 0 12px; }
+.installer-choice p { color: var(--muted); font-size: .86rem; line-height: 1.45; }
+.installer-choice .primary { min-height: 48px; font-size: .9rem; }
+.command-copy { align-items: flex-start; padding: 10px; border: 1px solid #34435d; border-radius: 9px; background: #070b12; }
+.command-copy code { min-width: 0; overflow-wrap: anywhere; color: #b9d1ff; font-size: .78rem; }
+.success details .primary { margin-top: 14px; }
 .hidden { display: none !important; }
 
 @media (max-width: 560px) {
@@ -107,5 +121,6 @@ summary { color: var(--text); cursor: pointer; font-weight: 750; }
 	.card { grid-template-columns: 44px 1fr; }
 	.card-body { padding: 15px; }
 	.download-grid { grid-template-columns: 1fr; }
+	.installer-choice { grid-template-columns: 1fr; }
 	.success { padding: 20px; }
 }

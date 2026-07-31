@@ -25,10 +25,18 @@ const RESERVED_NAMES = new Set([
 ]);
 const MAX_BODY_BYTES = 16 * 1024;
 const RENAMEABLE_FAILURES = new Set(["name_taken"]);
+const APP_ROOT = path.resolve(__dirname);
+const PUBLIC_ROOT = path.join(APP_ROOT, "public");
 const PUBLIC_FILES = new Map([
 	["/", ["index.html", "text/html; charset=utf-8"]],
 	["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
+	["/installer.js", ["installer.js", "text/javascript; charset=utf-8"]],
 	["/styles.css", ["styles.css", "text/css; charset=utf-8"]],
+	["/guide", ["guide.html", "text/html; charset=utf-8"]],
+	["/guide/", ["guide.html", "text/html; charset=utf-8"]],
+	["/guide/styles.css", ["styles.css", "text/css; charset=utf-8"]],
+	["/guide/guide.css", ["guide.css", "text/css; charset=utf-8"]],
+	["/guide/AGENT-HANDOFF.md", ["AGENT-HANDOFF.md", "text/markdown; charset=utf-8"]],
 	["/agent-kit/compose.yaml", ["../agent-kit/compose.yaml", "text/yaml; charset=utf-8"]],
 	["/agent-kit/Dockerfile", ["../agent-kit/Dockerfile", "text/plain; charset=utf-8"]],
 	["/agent-kit/agent_adapter.py", ["../agent-kit/agent_adapter.py", "text/x-python; charset=utf-8"]],
@@ -1234,8 +1242,8 @@ async function route(request, response) {
 	}
 	if (request.method === "GET" && PUBLIC_FILES.has(pathname)) {
 		const [relative, contentType] = PUBLIC_FILES.get(pathname);
-		const filePath = path.resolve("/app/public", relative);
-		const allowedRoot = path.resolve("/app");
+		const filePath = path.resolve(PUBLIC_ROOT, relative);
+		const allowedRoot = APP_ROOT;
 		if (!filePath.startsWith(`${allowedRoot}${path.sep}`)) {
 			return jsonResponse(response, 404, {error: "not_found"});
 		}

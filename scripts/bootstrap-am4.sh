@@ -256,4 +256,5 @@ printf '\nAM4 private backend is ready.\n'
 printf 'Public IRC after Funnel enablement: %s:8443 (TLS)\n' "$tailscale_hostname"
 printf 'The Lounge: https://%s:10000/\n' "$tailscale_hostname"
 printf 'One-time join portal: https://%s/join/\n' "$tailscale_hostname"
+printf 'BotHerder guide: https://%s/guide/\n' "$tailscale_hostname"
 printf 'Secrets remain only in %s (mode 0600).\n' "$secrets_file"
