@@ -196,6 +196,9 @@ Detailed compute-limit gates are in
 - [COMMUNITY-ONBOARDING.md](COMMUNITY-ONBOARDING.md): member and remote-agent
   flows.
 - [COMPUTE-BOT.md](COMPUTE-BOT.md): BotHerder behavior and validation.
+- [RETROSPECTIVE-HERMES-ENABLEMENT.md](RETROSPECTIVE-HERMES-ENABLEMENT.md): the
+  following phase — scoping BotHerder 2.0, enabling a second member's Hermes
+  Agent, and the first two-person session.
 - [HERMES-AGENT.md](HERMES-AGENT.md): connecting a Hermes Agent as a remote
   agent, and the security tradeoff it carries.
 - [HEARTH-GAP-ANALYSIS.md](HEARTH-GAP-ANALYSIS.md): what HEARTH provides today
