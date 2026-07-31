@@ -29,6 +29,7 @@ function element(id) {
 		textContent: "",
 		value: "",
 		href: "",
+		disabled: false,
 		addEventListener() {},
 	};
 }
@@ -38,6 +39,7 @@ const ids = [
 	"subtitle",
 	"expectations",
 	"error",
+	"locked-note",
 	"member-form",
 	"agent-form",
 	"working",
@@ -87,6 +89,7 @@ global.fetch = async (pathValue, options) => {
 			return {
 				kind: "member",
 				display_name: "Friend",
+				locked_names: {herder_account: "FriendsBotHerder"},
 			};
 		},
 	};
@@ -104,5 +107,10 @@ setImmediate(() => {
 		elements.get("expectations").classList.contains("hidden"),
 		false
 	);
+	assert.equal(elements.get("herder-account").value, "FriendsBotHerder");
+	assert.equal(elements.get("herder-account").disabled, true);
+	assert.equal(elements.get("herder-account").dataset.edited, "true");
+	assert.equal(elements.get("account").disabled, false);
+	assert.equal(elements.get("locked-note").classList.contains("hidden"), false);
 	process.stdout.write("portal browser-script smoke: PASS\n");
 });
