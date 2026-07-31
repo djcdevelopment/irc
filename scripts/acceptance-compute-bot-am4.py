@@ -402,20 +402,24 @@ def test_basic() -> None:
             f"{max(size for _, size in long_completion)} bytes"
         )
 
-        throttled = None
+        # Capacity is consumed only for dispatchable requests, so an unknown
+        # model name no longer costs the caller a slot. Throttling has to be
+        # provoked with the seeded model. Send without waiting, then look past
+        # the acknowledgements and completions for the refusal.
         for index in range(8):
             client.send(
-                f"PRIVMSG {ACCEPTANCE_CHANNEL} :{BOT_NICK}: ask "
-                f"missing-model rate-test-{index}"
+                f"PRIVMSG {ACCEPTANCE_CHANNEL} :{BOT_NICK}: ask gpt-oss-120b "
+                f"rate-test-{index}"
             )
-            response, _ = client.wait_for_bot("", 10)
-            if "rate limit" in response.casefold():
-                throttled = response
-                break
-        if not throttled:
+        try:
+            throttled, _ = client.wait_for_bot("rate limit", 90)
+        except TimeoutError:
             raise AcceptanceFailure("per-account rate limiter did not throttle")
         print_transcript("throttle", throttled)
         print("PASS 6: per-account rate limit produced a throttle notice")
+        # Six accepted requests are still running; let them settle so they do
+        # not bleed into the next check.
+        client.drain(5)
         print("PASS 9: no configured secret appeared in captured channel output")
     finally:
         client.close()
