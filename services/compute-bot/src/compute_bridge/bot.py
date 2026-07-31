@@ -11,8 +11,9 @@ from pathlib import Path
 
 from .config import AppConfig, ModelConfig
 from .metrics import MetricsStore
+from .hearth import HearthClient
 from .models import Completion, ModelClient, ModelError
-from .output import chunk_completion
+from .output import chunk_completion, format_bytes
 from .portal import CommunityPortalClient, PortalError
 from .protocol import IRCMessage, parse_irc_line
 from .rate_limit import SlidingWindowRateLimiter
@@ -63,11 +64,17 @@ class BotHerder:
         *,
         metrics: MetricsStore | None = None,
         portal: CommunityPortalClient | None = None,
+        hearth: HearthClient | None = None,
     ) -> None:
         self.config = config
         self.metrics = metrics
         self.portal = portal
         self.model_client = ModelClient()
+        self.hearth = hearth or (
+            HearthClient(config.hearth)
+            if config.hearth and config.hearth.mode in {"shadow", "hearth"}
+            else None
+        )
         self.rate_limiter = SlidingWindowRateLimiter(
             config.limits.requests_per_minute
         )
@@ -134,6 +141,8 @@ class BotHerder:
                 await asyncio.gather(*tasks, return_exceptions=True)
             self.agent_requests.clear()
             await self.model_client.close()
+            if self.hearth:
+                await self.hearth.close()
 
     async def stop(self) -> None:
         self.stop_event.set()
@@ -412,7 +421,8 @@ class BotHerder:
         await self._reply(
             target,
             f"{prefix}{self.config.irc.nick} online {uptime}; "
-            f"pending={self.pending_count}; owner={self.config.irc.owner_account}",
+            f"pending={self.pending_count}; owner={self.config.irc.owner_account}; "
+            f"execution={self.config.hearth.mode if self.config.hearth else 'direct'}",
         )
 
     async def _usage(self, target: str) -> None:
@@ -633,7 +643,49 @@ class BotHerder:
         completion: Completion | None = None
         try:
             async with self.semaphore:
-                completion = await self.model_client.complete(model, prompt)
+                mode = self.config.hearth.mode if self.config.hearth else "direct"
+                if mode == "hearth":
+                    if self.hearth is None:
+                        raise ModelError("HEARTH execution client is unavailable")
+                    completion = await self.hearth.complete(
+                        model,
+                        prompt,
+                        account=account,
+                        idempotency_key=(
+                            f"irc:{self.config.irc.account.casefold()}:{request_id}"
+                        ),
+                    )
+                else:
+                    shadow_task = None
+                    if mode == "shadow" and self.hearth is not None:
+                        shadow_task = asyncio.create_task(
+                            self.hearth.plan(model, prompt)
+                        )
+                    completion = await self.model_client.complete(model, prompt)
+                    if shadow_task is not None:
+                        try:
+                            plan = await asyncio.wait_for(shadow_task, timeout=15)
+                            LOGGER.info(
+                                "hearth_shadow_plan request_id=%s herder=%s "
+                                "provider=%s model=%s dispatch=%s",
+                                request_id,
+                                self.config.irc.account,
+                                plan.get("provider"),
+                                plan.get("model"),
+                                plan.get("dispatch"),
+                            )
+                        except Exception as exc:
+                            shadow_task.cancel()
+                            await asyncio.gather(
+                                shadow_task, return_exceptions=True
+                            )
+                            LOGGER.warning(
+                                "hearth_shadow_unavailable request_id=%s "
+                                "herder=%s error_type=%s",
+                                request_id,
+                                self.config.irc.account,
+                                type(exc).__name__,
+                            )
             chunks = chunk_completion(
                 completion.text,
                 max_payload_bytes=self.config.limits.irc_payload_bytes,
@@ -646,6 +698,18 @@ class BotHerder:
             for chunk in chunks:
                 if await self._reply(target, f"{nick}: {chunk}"):
                     delivered += 1
+            if (
+                completion.artifact
+                and any("truncated" in chunk for chunk in chunks)
+            ):
+                artifact = completion.artifact
+                await self._reply(
+                    target,
+                    f"{nick}: job={completion.job_id} "
+                    f"artifact={artifact.get('artifact_id')} "
+                    f"size={format_bytes(int(artifact.get('size', 0)))} "
+                    f"sha256={artifact.get('sha256')}",
+                )
             # A result the caller never received is not a success.
             status = "ok" if delivered == len(chunks) else "undelivered"
             output_lines = delivered
