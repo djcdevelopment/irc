@@ -169,6 +169,8 @@ Test-NetConnection am4.tail8e749c.ts.net -Port 8443
 
 The deployed endpoint has also passed trusted TLS, SASL, registered-channel,
 PROXY-client-address, restart, and history-replay checks.
+Sanitized execution-control-plane evidence is in
+[docs/evidence/HEARTH-EXECUTION.md](docs/evidence/HEARTH-EXECUTION.md).
 
 ## 10. Backup and restore
 
