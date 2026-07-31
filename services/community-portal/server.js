@@ -24,6 +24,7 @@ const RESERVED_NAMES = new Set([
 	"root",
 ]);
 const MAX_BODY_BYTES = 16 * 1024;
+const RENAMEABLE_FAILURES = new Set(["name_taken"]);
 const PUBLIC_FILES = new Map([
 	["/", ["index.html", "text/html; charset=utf-8"]],
 	["/app.js", ["app.js", "text/javascript; charset=utf-8"]],
@@ -50,6 +51,9 @@ const config = {
 	herderMembersDir:
 		process.env.BOT_HERDER_MEMBERS_DIR || "/var/lib/bot-herder/members",
 	loungeHome: process.env.THELOUNGE_HOME || "/var/opt/thelounge",
+	loungeCommand: (process.env.COMMUNITY_THELOUNGE_BIN || "/usr/local/bin/thelounge")
+		.trim()
+		.split(/\s+/),
 	publicBase: requiredEnvironment("COMMUNITY_PUBLIC_BASE").replace(/\/+$/, ""),
 	loungeUrl: requiredEnvironment("COMMUNITY_LOUNGE_URL").replace(/\/?$/, "/"),
 	ircPublicHost: requiredEnvironment("COMMUNITY_IRC_PUBLIC_HOST"),
@@ -384,6 +388,45 @@ function getInvite(token) {
 		.get(tokenHash(token));
 }
 
+function sameAccount(left, right) {
+	return String(left).toLowerCase() === String(right).toLowerCase();
+}
+
+function lockedNamesOf(credentials) {
+	const locked = {};
+	if (credentials.ownerLocked) {
+		locked.account = credentials.ownerAccount;
+	}
+	if (credentials.herderLocked) {
+		locked.herder_account = credentials.herderAccount;
+	}
+	return locked;
+}
+
+function storedLockedNames(invite) {
+	if (!invite.credential_cipher) {
+		return {};
+	}
+	try {
+		return lockedNamesOf(decryptCredentials(invite.credential_cipher));
+	} catch {
+		return {};
+	}
+}
+
+function lockedNamesMessage(locked) {
+	const created = [];
+	if (locked.account) {
+		created.push(`the IRC name "${locked.account}"`);
+	}
+	if (locked.herder_account) {
+		created.push(`the BotHerder name "${locked.herder_account}"`);
+	}
+	return `an earlier attempt already created ${created.join(" and ")}; ${
+		created.length > 1 ? "those names are" : "that name is"
+	} fixed for this invitation`;
+}
+
 function publicInvite(invite) {
 	if (!invite) {
 		throw Object.assign(new Error("invitation not found"), {
@@ -415,7 +458,8 @@ function publicInvite(invite) {
 			code: "invite_expired",
 		});
 	}
-	return {
+	const locked = storedLockedNames(invite);
+	const preview = {
 		kind: invite.kind,
 		display_name: invite.display_name,
 		owner_account: invite.owner_account,
@@ -423,6 +467,10 @@ function publicInvite(invite) {
 		agent_name: invite.agent_name,
 		expires_utc: invite.expires_at,
 	};
+	if (Object.keys(locked).length > 0) {
+		preview.locked_names = locked;
+	}
+	return preview;
 }
 
 class IRCSession {
@@ -596,7 +644,7 @@ class IRCSession {
 	}
 }
 
-async function verifyAccountPassword(account, password) {
+async function probeAccountPassword(account, password) {
 	const session = new IRCSession();
 	try {
 		await session.connect();
@@ -615,16 +663,21 @@ async function verifyAccountPassword(account, password) {
 		);
 		session.send(`AUTHENTICATE ${payload}`);
 		const result = await session.waitFor((line) => / 90[34] /.test(line));
-		return / 903 /.test(result);
+		return / 903 /.test(result) ? "owned" : "rejected";
 	} catch {
-		return false;
+		return "unreachable";
 	} finally {
 		session.close();
 	}
 }
 
+async function verifyAccountPassword(account, password) {
+	return (await probeAccountPassword(account, password)) === "owned";
+}
+
 async function ensureAccounts(accounts) {
 	const registrar = new IRCSession();
+	const locked = {};
 	try {
 		await registrar.authenticateRegistrar();
 		for (const account of accounts) {
@@ -638,8 +691,11 @@ async function ensureAccounts(accounts) {
 			) {
 				throw Object.assign(
 					new Error(`${account.label} is already in use; choose another name`),
-					{status: 409, code: "name_taken"}
+					{status: 409, code: "name_taken", locked_names: locked}
 				);
+			}
+			if (account.field) {
+				locked[account.field] = account.name;
 			}
 		}
 	} finally {
@@ -718,9 +774,10 @@ function ensureLoungeUser(account, password, displayName) {
 		mode: 0o700,
 	});
 	try {
+		const [executable, ...leading] = config.loungeCommand;
 		const result = spawnSync(
-			"/usr/local/bin/thelounge",
-			["add", "--password", password, "--save-logs", account],
+			executable,
+			[...leading, "add", "--password", password, "--save-logs", account],
 			{
 				env: {...process.env, THELOUNGE_HOME: temporaryHome},
 				encoding: "utf8",
@@ -776,55 +833,7 @@ function ensureHerderMember({
 	atomicWriteJson(destination, member);
 }
 
-function prepareCredentialEnvelope(invite, submitted) {
-	if (invite.credential_cipher) {
-		const updated = database
-			.prepare(
-				`UPDATE invites SET state = 'provisioning', failure_code = NULL
-				 WHERE id = ? AND state = 'failed'`
-			)
-			.run(invite.id);
-		if (updated.changes !== 1) {
-			throw Object.assign(
-				new Error("invitation is already being processed"),
-				{status: 409, code: "invite_busy"}
-			);
-		}
-		return decryptCredentials(invite.credential_cipher);
-	}
-	let credentials;
-	if (invite.kind === "member") {
-		const ownerAccount = validAccount(submitted.account, "IRC name");
-		const herderAccount = validAccount(
-			submitted.herder_account,
-			"BotHerder name"
-		);
-		if (ownerAccount.toLowerCase() === herderAccount.toLowerCase()) {
-			throw Object.assign(
-				new Error("your IRC name and BotHerder name must be different"),
-				{status: 400, code: "names_match"}
-			);
-		}
-		credentials = {
-			ownerAccount,
-			displayName: validDisplayName(
-				submitted.display_name,
-				invite.display_name
-			),
-			humanPassword: strongSecret(),
-			herderAccount,
-			herderPassword: strongSecret(),
-		};
-	} else {
-		credentials = {
-			ownerAccount: invite.owner_account,
-			herderAccount: invite.herder_account,
-			agentName: invite.agent_name,
-			agentAccount: invite.agent_account,
-			agentPassword: strongSecret(),
-		};
-	}
-	const cipher = encryptCredentials(credentials);
+function claimInvite(invite, cipher) {
 	const updated = database
 		.prepare(
 			`UPDATE invites
@@ -838,21 +847,143 @@ function prepareCredentialEnvelope(invite, submitted) {
 			code: "invite_busy",
 		});
 	}
+}
+
+function submittedMemberNames(invite, submitted) {
+	const ownerAccount = validAccount(submitted.account, "IRC name");
+	const herderAccount = validAccount(
+		submitted.herder_account,
+		"BotHerder name"
+	);
+	if (sameAccount(ownerAccount, herderAccount)) {
+		throw Object.assign(
+			new Error("your IRC name and BotHerder name must be different"),
+			{status: 400, code: "names_match"}
+		);
+	}
+	return {
+		ownerAccount,
+		herderAccount,
+		displayName: validDisplayName(submitted.display_name, invite.display_name),
+	};
+}
+
+function registrarUnreachable() {
+	return Object.assign(
+		new Error(
+			"the IRC service could not be reached to check the earlier attempt; please try again in a moment"
+		),
+		{status: 503, code: "registrar_unreachable"}
+	);
+}
+
+async function rebuildMemberEnvelope(invite, stored, submitted) {
+	const requested = submittedMemberNames(invite, submitted);
+	const ownerProbe = await probeAccountPassword(
+		stored.ownerAccount,
+		stored.humanPassword
+	);
+	if (ownerProbe === "unreachable") {
+		throw registrarUnreachable();
+	}
+	const herderProbe = await probeAccountPassword(
+		stored.herderAccount,
+		stored.herderPassword
+	);
+	if (herderProbe === "unreachable") {
+		throw registrarUnreachable();
+	}
+	const ownerLocked = ownerProbe === "owned";
+	const herderLocked = herderProbe === "owned";
+	if (
+		(ownerLocked && !sameAccount(requested.ownerAccount, stored.ownerAccount)) ||
+		(herderLocked && !sameAccount(requested.herderAccount, stored.herderAccount))
+	) {
+		const locked = {...stored, ownerLocked, herderLocked};
+		database
+			.prepare(
+				`UPDATE invites SET credential_cipher = ?
+				 WHERE id = ? AND state = 'failed'`
+			)
+			.run(encryptCredentials(locked), invite.id);
+		const lockedNames = lockedNamesOf(locked);
+		throw Object.assign(new Error(lockedNamesMessage(lockedNames)), {
+			status: 409,
+			code: "name_locked",
+			locked_names: lockedNames,
+		});
+	}
+	const credentials = {
+		ownerAccount: ownerLocked ? stored.ownerAccount : requested.ownerAccount,
+		displayName: requested.displayName,
+		humanPassword: ownerLocked ? stored.humanPassword : strongSecret(),
+		herderAccount: herderLocked
+			? stored.herderAccount
+			: requested.herderAccount,
+		herderPassword: herderLocked ? stored.herderPassword : strongSecret(),
+		ownerLocked,
+		herderLocked,
+	};
+	claimInvite(invite, encryptCredentials(credentials));
+	return credentials;
+}
+
+async function prepareCredentialEnvelope(invite, submitted) {
+	// A stored envelope carries the passwords of accounts an earlier attempt may
+	// already have created, so it is only rebuilt from a new submission for the
+	// names IRC confirms that envelope never claimed.
+	if (invite.credential_cipher) {
+		const stored = decryptCredentials(invite.credential_cipher);
+		if (
+			invite.kind === "member" &&
+			RENAMEABLE_FAILURES.has(invite.failure_code)
+		) {
+			return rebuildMemberEnvelope(invite, stored, submitted);
+		}
+		const reused =
+			invite.kind === "member"
+				? {...stored, ownerLocked: true, herderLocked: true}
+				: stored;
+		claimInvite(invite, encryptCredentials(reused));
+		return reused;
+	}
+	let credentials;
+	if (invite.kind === "member") {
+		const requested = submittedMemberNames(invite, submitted);
+		credentials = {
+			ownerAccount: requested.ownerAccount,
+			displayName: requested.displayName,
+			humanPassword: strongSecret(),
+			herderAccount: requested.herderAccount,
+			herderPassword: strongSecret(),
+		};
+	} else {
+		credentials = {
+			ownerAccount: invite.owner_account,
+			herderAccount: invite.herder_account,
+			agentName: invite.agent_name,
+			agentAccount: invite.agent_account,
+			agentPassword: strongSecret(),
+		};
+	}
+	claimInvite(invite, encryptCredentials(credentials));
 	return credentials;
 }
 
 async function redeemMember(invite, submitted) {
-	const credentials = prepareCredentialEnvelope(invite, submitted);
+	const credentials = await prepareCredentialEnvelope(invite, submitted);
 	await ensureAccounts([
 		{
 			name: credentials.ownerAccount,
 			password: credentials.humanPassword,
 			label: "IRC name",
+			field: "account",
 		},
 		{
 			name: credentials.herderAccount,
 			password: credentials.herderPassword,
 			label: "BotHerder name",
+			field: "herder_account",
 		},
 	]);
 	ensureLoungeUser(
@@ -905,7 +1036,7 @@ async function redeemMember(invite, submitted) {
 }
 
 async function redeemAgent(invite, submitted) {
-	const credentials = prepareCredentialEnvelope(invite, submitted);
+	const credentials = await prepareCredentialEnvelope(invite, submitted);
 	await ensureAccounts([
 		{
 			name: credentials.agentAccount,
@@ -963,12 +1094,16 @@ async function redeemInvite(token, submitted) {
 			? await redeemMember(invite, submitted)
 			: await redeemAgent(invite, submitted);
 	} catch (error) {
-		database
-			.prepare(
-				`UPDATE invites SET state = 'failed', failure_code = ?
-				 WHERE id = ? AND state = 'provisioning'`
-			)
-			.run(error.code || "provisioning_failed", invite.id);
+		// An invite_busy error comes from a request that never owned this
+		// invitation, so it must not describe the outcome of the one that does.
+		if (error.code !== "invite_busy") {
+			database
+				.prepare(
+					`UPDATE invites SET state = 'failed', failure_code = ?
+					 WHERE id = ? AND state = 'provisioning'`
+				)
+				.run(error.code || "provisioning_failed", invite.id);
+		}
 		throw error;
 	}
 }
@@ -1280,13 +1415,17 @@ const server = http.createServer((request, response) => {
 				`portal_request_failed path=${normalizePath(request.url || "/").pathname} error_type=${error.constructor.name}`
 			);
 		}
-		jsonResponse(response, status, {
+		const payload = {
 			error: code,
 			message:
 				status >= 500
 					? "Provisioning could not be completed. The invitation is still recoverable."
 					: error.message,
-		});
+		};
+		if (error.locked_names && Object.keys(error.locked_names).length > 0) {
+			payload.locked_names = error.locked_names;
+		}
+		jsonResponse(response, status, payload);
 	});
 });
 

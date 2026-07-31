@@ -83,6 +83,32 @@ To add a host model:
 IRC users cannot submit endpoints, model IDs, credentials, tools, or shell
 commands.
 
+## Answer shape for IRC
+
+IRC has no markdown renderer, and `max_output_lines` is spent per line rather
+than per byte. A table costs one line per row plus a separator row that carries
+no information at all, so a formatted answer is cut off well before its 4 KiB
+byte budget is used. Two controls keep the line budget on content.
+
+`config/compute-bot/bot.toml` sends a system message on every local model
+request:
+
+```toml
+[completion]
+system_prompt = """
+You are answering in an IRC channel. Write plain text only: no markdown, ...
+"""
+```
+
+An empty string sends no system message. Remote agents are unaffected; they
+run their own adapter and their own prompt.
+
+Whatever markdown still arrives is flattened before chunking. Horizontal rules,
+code fences, and table separator rows are dropped; table rows become
+`cell — cell`; heading markers are removed; and asterisk emphasis is stripped.
+Underscore emphasis is deliberately left alone so `snake_case` and `__init__`
+survive, and the guards keep `**kwargs` from being read as a bold span.
+
 ## Remote-agent seam
 
 The owner creates a one-time invitation through a private Herder message.

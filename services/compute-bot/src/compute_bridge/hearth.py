@@ -136,17 +136,21 @@ class HearthClient:
         *,
         account: str,
         idempotency_key: str,
+        system_prompt: str = "",
     ) -> Completion:
+        execution_arguments = {
+            "prompt": prompt,
+            "model": model.model_id,
+        }
+        if system_prompt.strip():
+            execution_arguments["system"] = system_prompt.strip()
         async with self._session() as session:
             submitted = await self._call(
                 session,
                 "submit_delegated_execution",
                 {
                     "operation": self.config.operation,
-                    "arguments": {
-                        "prompt": prompt,
-                        "model": model.model_id,
-                    },
+                    "arguments": execution_arguments,
                     "principal_type": "irc_account",
                     "principal_id": account,
                     "source_transport": "irc",

@@ -69,7 +69,7 @@ class BotHerder:
         self.config = config
         self.metrics = metrics
         self.portal = portal
-        self.model_client = ModelClient()
+        self.model_client = ModelClient(config.system_prompt)
         self.hearth = hearth or (
             HearthClient(config.hearth)
             if config.hearth and config.hearth.mode in {"shadow", "hearth"}
@@ -654,6 +654,7 @@ class BotHerder:
                         idempotency_key=(
                             f"irc:{self.config.irc.account.casefold()}:{request_id}"
                         ),
+                        system_prompt=self.config.system_prompt,
                     )
                 else:
                     shadow_task = None

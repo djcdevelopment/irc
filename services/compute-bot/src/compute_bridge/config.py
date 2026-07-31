@@ -92,6 +92,7 @@ class AppConfig:
     models: Mapping[str, ModelConfig]
     log_level: str
     hearth: HearthConfig | None = None
+    system_prompt: str = ""
 
     @property
     def secrets(self) -> tuple[str, ...]:
@@ -333,6 +334,21 @@ def _load_hearth(raw: dict, environ: Mapping[str, str]) -> HearthConfig:
     )
 
 
+def _load_system_prompt(raw: dict) -> str:
+    table = raw.get("completion", {})
+    if not isinstance(table, dict):
+        raise ConfigError("[completion] must be a table")
+    value = table.get("system_prompt", "")
+    if not isinstance(value, str):
+        raise ConfigError("completion.system_prompt must be a string")
+    prompt = value.strip()
+    if "\0" in prompt:
+        raise ConfigError("completion.system_prompt contains a forbidden control character")
+    if len(prompt.encode("utf-8")) > 2048:
+        raise ConfigError("completion.system_prompt is too long")
+    return prompt
+
+
 def _load_models(
     raw: dict, environ: Mapping[str, str], *, require_api_keys: bool = True
 ) -> Mapping[str, ModelConfig]:
@@ -418,4 +434,5 @@ def load_config(
         ),
         log_level=log_level,
         hearth=hearth,
+        system_prompt=_load_system_prompt(bot_raw),
     )

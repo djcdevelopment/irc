@@ -86,6 +86,7 @@ class HearthClientTest(unittest.IsolatedAsyncioTestCase):
             "hello",
             account="Alice",
             idempotency_key="irc:alice:1",
+            system_prompt="Plain IRC text.",
         )
         self.assertEqual("complete result", completion.text)
         self.assertEqual("job_test", completion.job_id)
@@ -95,6 +96,7 @@ class HearthClientTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("Alice", submit[1]["principal_id"])
         self.assertEqual("irc", submit[1]["source_transport"])
         self.assertEqual("irc:alice:1", submit[1]["idempotency_key"])
+        self.assertEqual("Plain IRC text.", submit[1]["arguments"]["system"])
         self.assertNotIn("secret", str(client.calls))
 
     async def test_shadow_plan_contains_no_prompt_content(self):

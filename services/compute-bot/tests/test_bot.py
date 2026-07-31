@@ -168,8 +168,18 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
         calls = []
 
         class FakeHearth:
-            async def complete(self, model, prompt, *, account, idempotency_key):
-                calls.append((model.name, prompt, account, idempotency_key))
+            async def complete(
+                self,
+                model,
+                prompt,
+                *,
+                account,
+                idempotency_key,
+                system_prompt="",
+            ):
+                calls.append(
+                    (model.name, prompt, account, idempotency_key, system_prompt)
+                )
                 return Completion(
                     text="canonical result",
                     job_id="job_123",

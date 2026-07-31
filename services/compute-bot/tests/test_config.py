@@ -39,6 +39,15 @@ description = "Reasoning model"
 """
 
 
+COMPLETION_CONFIG = '''
+[completion]
+system_prompt = """
+Plain text only. \\
+No tables.
+"""
+'''
+
+
 class ConfigTests(unittest.TestCase):
     def _load(self, bot=BOT_CONFIG, models=MODELS_CONFIG, env=None):
         with tempfile.TemporaryDirectory() as directory:
@@ -65,6 +74,20 @@ class ConfigTests(unittest.TestCase):
         self.assertNotIn("irc-secret", repr(config))
         self.assertNotIn("model-secret", repr(config))
         self.assertNotIn("internal-secret", repr(config))
+
+    def test_system_prompt_is_absent_by_default(self):
+        self.assertEqual(self._load().system_prompt, "")
+
+    def test_system_prompt_is_joined_and_trimmed(self):
+        config = self._load(bot=BOT_CONFIG + COMPLETION_CONFIG)
+        self.assertEqual(config.system_prompt, "Plain text only. No tables.")
+
+    def test_oversized_system_prompt_is_rejected(self):
+        oversized = "x" * 2049
+        with self.assertRaisesRegex(ConfigError, "system_prompt"):
+            self._load(
+                bot=f'{BOT_CONFIG}\n[completion]\nsystem_prompt = "{oversized}"\n'
+            )
 
     def test_missing_secret_is_rejected_without_value(self):
         with self.assertRaisesRegex(ConfigError, "MODEL_KEY"):
