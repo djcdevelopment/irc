@@ -21,6 +21,12 @@ def main() -> int:
     try:
         client.login()
         client.send(
+            "PRIVMSG #bot-collab-test :DereksBotHerder: status"
+        )
+        status, _ = client.wait_for_bot("execution=hearth")
+        print_transcript("provenance-status", status)
+
+        client.send(
             "PRIVMSG #bot-collab-test :DereksBotHerder: ask "
             "are you using HEARTH now, or the direct model endpoint?"
         )
