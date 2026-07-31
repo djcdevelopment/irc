@@ -86,6 +86,28 @@ class ConfigTests(unittest.TestCase):
         config = self._load(bot=BOT_CONFIG + COMPLETION_CONFIG)
         self.assertEqual(config.system_prompt, "Plain text only. No tables.")
 
+    def test_storefront_presentation_is_loaded(self):
+        config = self._load(
+            bot=BOT_CONFIG
+            + """
+[storefront]
+channel = "#herder-alice"
+about = "  Alice's model workshop.  "
+"""
+        )
+        self.assertEqual(config.storefront.channel, "#herder-alice")
+        self.assertEqual(config.storefront.about, "Alice's model workshop.")
+
+    def test_invalid_storefront_channel_is_rejected(self):
+        with self.assertRaisesRegex(ConfigError, "storefront.channel"):
+            self._load(
+                bot=BOT_CONFIG
+                + """
+[storefront]
+channel = "herder alice"
+"""
+            )
+
     def test_oversized_system_prompt_is_rejected(self):
         oversized = "x" * 2049
         with self.assertRaisesRegex(ConfigError, "system_prompt"):

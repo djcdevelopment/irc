@@ -207,6 +207,11 @@ Detailed compute-limit gates are in
   rollout, and rollback.
 - [RETROSPECTIVE-HEARTH-EXECUTION.md](RETROSPECTIVE-HEARTH-EXECUTION.md): why
   the control plane was built in HEARTH before migrating IRC.
+- [RETROSPECTIVE-STOREFRONT-PROTOTYPE.md](RETROSPECTIVE-STOREFRONT-PROTOTYPE.md):
+  the first persistent personal storefront, its projection boundaries, and why
+  the next phase is observation rather than feature expansion.
+- [STOREFRONT-UX-JOURNAL.md](STOREFRONT-UX-JOURNAL.md): the living evidence log
+  for whether `#herder-derek` feels like Derek's lab or workshop.
 - [AM4.md](AM4.md): production topology and host layout.
 - [OPERATIONS.md](OPERATIONS.md): administration, backup, recovery, and
   teardown.

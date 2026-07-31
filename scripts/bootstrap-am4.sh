@@ -241,6 +241,8 @@ if [[ "$database_was_present" == false ]]; then
             "PRIVMSG ChanServ :REGISTER #general" \
             "JOIN #ops" \
             "PRIVMSG ChanServ :REGISTER #ops" \
+            "JOIN #herder-derek" \
+            "PRIVMSG ChanServ :REGISTER #herder-derek" \
             "PRIVMSG #ops :Infrastructure channel initialized by AM4 bootstrap." \
             "QUIT :Bootstrap channel setup complete"
     )"

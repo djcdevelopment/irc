@@ -72,6 +72,8 @@ function startFakeErgo({accounts = {}, operName, operPassword}) {
 						? `:fake.ergo 381 ${nick} :You are now an IRC operator`
 						: `:fake.ergo 464 ${nick} :Password incorrect`
 				);
+			} else if (command === "JOIN") {
+				write(`:${nick}!user@fake JOIN ${head[1] || "#unknown"}`);
 			} else if (
 				command === "PRIVMSG" &&
 				(head[1] || "").toUpperCase() === "NICKSERV"
@@ -97,6 +99,16 @@ function startFakeErgo({accounts = {}, operName, operPassword}) {
 					suspensions.push(account);
 					write(
 						`:NickServ!services@fake.ergo NOTICE ${nick} :Account ${account} suspended successfully`
+					);
+				}
+			} else if (
+				command === "PRIVMSG" &&
+				(head[1] || "").toUpperCase() === "CHANSERV"
+			) {
+				const request = trailing.split(" ").filter(Boolean);
+				if ((request[0] || "").toUpperCase() === "REGISTER") {
+					write(
+						`:ChanServ!services@fake.ergo NOTICE ${nick} :Channel ${request[1] || "#unknown"} successfully registered`
 					);
 				}
 			} else if (command === "QUIT") {

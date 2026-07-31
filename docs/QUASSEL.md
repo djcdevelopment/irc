@@ -26,7 +26,7 @@ connects directly to Ergo. This deployment does not run Quassel Core.
 | SASL mechanism | PLAIN |
 | SASL account | Your Ergo account name |
 | SASL password | Your personal Ergo account password |
-| Automatic joins | `#general`, `#ops` |
+| Automatic joins | `#general`, `#ops`, and your assigned `#herder-<display-name>` storefront |
 | Automatic reconnect | On; 10 seconds; unlimited retries |
 
 Tailscale Funnel supplies a publicly trusted certificate for
@@ -53,8 +53,10 @@ Ergo account and password through a trusted channel.
    account and personal password. Leave legacy NickServ Auto Identify off.
 10. On **Connection**, enable automatic reconnect, a 10-second retry delay, and
     unlimited retries. Enable rejoin after reconnect.
-11. Add `/JOIN #general` and `/JOIN #ops` under connect commands, or mark both
-    channels for automatic join after joining once.
+11. Add `/JOIN #general`, `/JOIN #ops`, and the storefront channel returned by
+    onboarding under connect commands, or mark all three channels for
+    automatic join after joining once. The administrator storefront is
+    `#herder-derek`.
 12. Delete or disable the old `omen...:6697` and `127.0.0.1:6697` entries so
     Quassel cannot cycle into the retained rollback server.
 13. Apply and connect.
@@ -70,7 +72,9 @@ Ergo account and password through a trusted channel.
 5. Add `am4.tail8e749c.ts.net`, port `8443`, with TLS and certificate
    verification enabled.
 6. Enable SASL PLAIN and save the personal account and password.
-7. Enable automatic reconnect and automatic joins for `#general` and `#ops`.
+7. Enable automatic reconnect and automatic joins for `#general`, `#ops`, and
+   the storefront channel returned by onboarding (`#herder-derek` for the
+   administrator).
 8. Remove the old OMEN 6697 server entry if it was copied from Windows.
 9. Connect. The certificate should validate normally without a prompt.
 
@@ -103,7 +107,7 @@ database. Ergo is authoritative for the shared account, channel ownership, and
 ## History and multi-client acceptance test
 
 1. Connect and confirm SASL succeeds.
-2. Join `#general` and `#ops`.
+2. Join `#general`, `#ops`, and your assigned storefront.
 3. Send several unique messages to `#general`.
 4. Fully disconnect or close Quassel.
 5. Send another message from The Lounge or a second authenticated client.
@@ -111,7 +115,8 @@ database. Ergo is authoritative for the shared account, channel ownership, and
 7. Connect a second Quassel installation with the same account and confirm both
    remain online with the same nickname.
 8. Ask the operator to restart the AM4 stack.
-9. Reconnect and confirm the account, channels, and history remain.
+9. Reconnect and confirm the account, shared channels, storefront, and history
+   remain.
 
 ## Troubleshooting
 

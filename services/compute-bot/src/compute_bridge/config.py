@@ -68,6 +68,12 @@ class HearthConfig:
 
 
 @dataclass(frozen=True)
+class StorefrontConfig:
+    channel: str = ""
+    about: str = ""
+
+
+@dataclass(frozen=True)
 class ModelConfig:
     name: str
     model_id: str
@@ -94,6 +100,7 @@ class AppConfig:
     log_level: str
     hearth: HearthConfig | None = None
     system_prompt: str = ""
+    storefront: StorefrontConfig = field(default_factory=StorefrontConfig)
 
     @property
     def secrets(self) -> tuple[str, ...]:
@@ -369,6 +376,21 @@ def _load_system_prompt(raw: dict) -> str:
     return prompt
 
 
+def _load_storefront(raw: dict) -> StorefrontConfig:
+    table = raw.get("storefront", {})
+    if not isinstance(table, dict):
+        raise ConfigError("[storefront] must be a table")
+    channel = table.get("channel", "")
+    about = table.get("about", "")
+    if not isinstance(channel, str) or (channel and not re.fullmatch(r"#[^\x00\x07\r\n ,:]{1,63}", channel)):
+        raise ConfigError("storefront.channel must be an IRC channel or empty")
+    if not isinstance(about, str) or any(char in about for char in "\r\n\0"):
+        raise ConfigError("storefront.about contains a forbidden control character")
+    if len(about.encode("utf-8")) > 1000:
+        raise ConfigError("storefront.about is too long")
+    return StorefrontConfig(channel=channel, about=about.strip())
+
+
 def _load_models(
     raw: dict, environ: Mapping[str, str], *, require_api_keys: bool = True
 ) -> Mapping[str, ModelConfig]:
@@ -455,4 +477,5 @@ def load_config(
         log_level=log_level,
         hearth=hearth,
         system_prompt=_load_system_prompt(bot_raw),
+        storefront=_load_storefront(bot_raw),
     )

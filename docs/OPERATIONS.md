@@ -308,7 +308,9 @@ An administrator can inspect and transfer registrations using:
 /CS TRANSFER #project alice
 ```
 
-`#general` and `#ops` are created and registered by bootstrap.
+`#general`, `#ops`, and the administrator's `#herder-derek` storefront are
+created and registered by bootstrap. The onboarding registrar creates each
+later member's derived `#herder-<display-name>` storefront.
 
 ## Grant IRC operator access
 
@@ -469,7 +471,8 @@ Lounge users, and local backups.
 
 1. Install Quassel Monolithic/Standalone on the first machine.
 2. Connect to `omen.tail8e749c.ts.net:6697` with TLS and SASL.
-3. Join `#general` and confirm `/CS INFO #general` shows it registered.
+3. Join `#general` and `#herder-derek`; confirm `/CS INFO` shows both are
+   registered.
 4. Send several uniquely identifiable messages.
 5. Disconnect Quassel.
 6. Add a personal Lounge user, configure the same Ergo SASL account, and send a
@@ -478,6 +481,7 @@ Lounge users, and local backups.
 8. Install Quassel Monolithic on a second machine with the same Ergo account.
 9. Confirm both clients remain connected with the same nickname.
 10. Run `docker compose restart` on OMEN.
-11. Reconnect and confirm account, `#general`, `#ops`, and message history.
+11. Reconnect and confirm account, `#general`, `#ops`, `#herder-derek`, and
+    message history.
 12. Run `.\scripts\check.ps1 -Persistence` and retain its output with the
     operational record.

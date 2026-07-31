@@ -43,7 +43,7 @@
 						<div>
 							<h3>See what can answer</h3>
 							<code>!models</code>
-							<p>This lists community models and your connected remote agents.</p>
+							<p>This lists the models currently exposed by the canonical HEARTH provider catalog.</p>
 						</div>
 					</article>
 					<article class="quick-step">
@@ -61,7 +61,7 @@
 				<div class="signal" aria-hidden="true">!</div>
 				<div>
 					<h2>Your bare commands reach only your Herder</h2>
-					<p>In a shared channel, <code>!ask</code> is answered only by the BotHerder owned by your authenticated IRC account. To name one explicitly, use <code>YourBotHerder: ask ...</code>.</p>
+					<p>Your personal <code>#herder-&lt;display-name&gt;</code> channel is the persistent storefront for your Herder. In any shared channel, a bare command is answered only by the BotHerder owned by your authenticated IRC account. To name one explicitly, use <code>YourBotHerder: ask ...</code>.</p>
 				</div>
 			</aside>
 
@@ -74,12 +74,48 @@
 						<p>Show the short command reminder and this guide URL.</p>
 					</article>
 					<article>
+						<code>!about</code>
+						<p>Show the storefront owner's short introduction.</p>
+					</article>
+					<article>
+						<code>!catalog</code>
+						<p>Show the live HEARTH operation and provider catalog.</p>
+					</article>
+					<article>
+						<code>!hardware</code>
+						<p>Show hardware details exposed by the current public HEARTH projection.</p>
+					</article>
+					<article>
 						<code>!status</code>
-						<p>Show uptime, pending work, owner, and the authoritative execution mode.</p>
+						<p>Show uptime, pending work, owner, execution mode, and live HEARTH status when available.</p>
 					</article>
 					<article>
 						<code>!models</code>
-						<p>List every allow-listed community model and each active remote agent you own.</p>
+						<p>List the allow-listed models exposed by the live HEARTH provider catalog.</p>
+					</article>
+					<article>
+						<code>!agents</code>
+						<p>List the storefront owner's attached remote agents and their current registry state.</p>
+					</article>
+					<article>
+						<code>!recent</code>
+						<p>Show recent owner-filtered executions when the HEARTH storefront projection is available.</p>
+					</article>
+					<article>
+						<code>!artifacts</code>
+						<p>Show public or result artifact metadata without exposing prompts or input artifacts.</p>
+					</article>
+					<article>
+						<code>!browse</code>
+						<p>List the member storefronts in the authenticated community index.</p>
+					</article>
+					<article>
+						<code>!compare &lt;herder&gt; &lt;herder&gt;</code>
+						<p>Place two indexed storefront summaries side by side.</p>
+					</article>
+					<article>
+						<code>!whohas &lt;capability&gt;</code>
+						<p>Find indexed storefronts when the shared HEARTH catalog advertises a matching capability.</p>
 					</article>
 					<article>
 						<code>!ask &lt;prompt&gt;</code>
@@ -101,6 +137,7 @@
 					<code>YourBotHerder: ask MyAgent review this architecture.</code>
 				</div>
 				<p class="fine-print">Quotes are optional and are not special syntax. If the first word is not a known model or agent, the full line becomes the prompt and the default model answers. The <strong>via ...</strong> acknowledgement tells you what actually handled the request.</p>
+				<p class="fine-print">Storefront inventory is a short-lived read-only projection. If an upstream discovery tool is unavailable, the Herder reports a smaller fallback view instead of maintaining a stale duplicate catalog.</p>
 			</section>
 
 			<section class="guide-section split" aria-labelledby="admin-title">
