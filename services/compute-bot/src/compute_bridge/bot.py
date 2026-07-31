@@ -23,6 +23,12 @@ LOGGER = logging.getLogger("bot_herder")
 REQUIRED_CAPABILITIES = {"sasl", "account-tag", "message-tags"}
 AGENT_PROTOCOL = "HERDER/1"
 GENERIC_AGENT_ERROR = "remote agent reported an error; try again later"
+HEARTH_EXECUTION_CONTEXT = (
+    "Execution context: HEARTH accepted this IRC request, selected the provider, "
+    "and dispatched this completion. You are not connected directly to the model "
+    "endpoint. If asked about the bot's live execution mode, state that this "
+    "request used HEARTH and recommend !status for the authoritative current mode."
+)
 # Allow-listed HERDER/1 ERROR reasons. Anything else, including the exception
 # type names older adapters send, falls back to the generic message.
 AGENT_ERROR_MESSAGES = {
@@ -606,8 +612,11 @@ class BotHerder:
     ) -> None:
         request_id = uuid.uuid4().hex[:12]
         self.pending_count += 1
+        mode = self.config.hearth.mode if self.config.hearth else "direct"
+        execution_note = " through HEARTH" if mode == "hearth" else ""
         await self._reply(
-            target, f"{nick}: working... (req {request_id} via {model.name})"
+            target,
+            f"{nick}: working... (req {request_id} via {model.name}{execution_note})",
         )
         task = asyncio.create_task(
             self._run_local_request(request_id, target, nick, account, model, prompt)
@@ -654,7 +663,14 @@ class BotHerder:
                         idempotency_key=(
                             f"irc:{self.config.irc.account.casefold()}:{request_id}"
                         ),
-                        system_prompt=self.config.system_prompt,
+                        system_prompt="\n\n".join(
+                            part
+                            for part in (
+                                self.config.system_prompt,
+                                HEARTH_EXECUTION_CONTEXT,
+                            )
+                            if part
+                        ),
                     )
                 else:
                     shadow_task = None

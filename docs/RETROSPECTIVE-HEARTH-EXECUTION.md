@@ -44,6 +44,13 @@ only in the new artifact system was therefore insufficient. The wrapper now
 records prompt byte count and SHA-256 instead of content, with regression tests
 for direct and delegated submission.
 
+The first human probe exposed another boundary: a model cannot infer the
+transport that invoked it. It confidently claimed a direct endpoint even while
+its request was present in the HEARTH ledger. The fix has two layers:
+acknowledgements now state `through HEARTH` deterministically, while the
+completion receives a non-secret execution-context system message. `!status`
+remains the operational source of truth.
+
 ## Deliberate compromises
 
 - Running provider cancellation is cooperative rather than a socket-level
@@ -66,4 +73,3 @@ for direct and delegated submission.
 - Add multiline or artifact-backed prompt input.
 - Introduce approval records only with an action digest and a real workflow;
   do not claim approval from reserved event names alone.
-

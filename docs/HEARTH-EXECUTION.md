@@ -37,6 +37,12 @@ operation = "llm.chat"
 The `[completion]` system prompt is sent through either execution path, so the
 plain-text IRC answer shape does not change during migration.
 
+In `hearth` mode the deterministic acknowledgement says `through HEARTH`, and
+`!status` is the authoritative live mode. The completion also receives a
+non-secret execution-context system message so it does not invent a direct
+endpoint topology when asked how it was invoked. Treat generated prose as an
+explanation, not an operational probe; use `!status` for the fact.
+
 ## Identity and authorization
 
 BotHerder forwards the IRCv3 `account` tag that Ergo attached after SASL. It
@@ -145,4 +151,3 @@ Verify:
 6. `tailscale serve status` shows the OMEN 8443 route as private Serve, not
    Funnel.
 7. Switching to `direct` and back is one config change plus container recreate.
-

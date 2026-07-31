@@ -215,6 +215,8 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual("use the ledger", calls[0][1])
         self.assertEqual("Alice", calls[0][2])
         self.assertTrue(calls[0][3].startswith("irc:alicesherder:"))
+        self.assertIn("this request used HEARTH", calls[0][4])
+        self.assertTrue(any("through HEARTH" in text for _, text in self.replies))
         self.assertTrue(any("canonical result" in text for _, text in self.replies))
 
     async def test_hearth_large_result_projects_artifact_reference(self):
