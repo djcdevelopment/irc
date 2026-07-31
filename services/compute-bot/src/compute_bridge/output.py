@@ -29,9 +29,48 @@ def _utf8_prefix(value: str, maximum_bytes: int) -> str:
     return encoded[:maximum_bytes].decode("utf-8", errors="ignore")
 
 
+_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+")
+_HORIZONTAL_RULE = re.compile(r"^(?:\s*[-*_]){3,}\s*$")
+_CODE_FENCE = re.compile(r"^\s*(?:```|~~~)")
+# Asterisk emphasis only: underscore emphasis would eat snake_case identifiers.
+# The guards stop "pass **args and **kwargs" from reading as one bold span.
+_EMPHASIS = re.compile(r"(?<![\w*])(\*{1,2})(?=\S)(.+?)(?<=\S)\1(?![\w*])")
+_DIVIDER_CHARACTERS = frozenset(" \t|:-")
+
+
+def _is_table_divider(line: str) -> bool:
+    return "|" in line and "-" in line and set(line) <= _DIVIDER_CHARACTERS
+
+
+def _flatten_table_row(line: str) -> str:
+    cells = (cell.strip() for cell in line.strip("|").split("|"))
+    return " — ".join(cell for cell in cells if cell)
+
+
+def _flatten_markdown(line: str) -> str:
+    """Drop markup that spends an IRC line without carrying information.
+
+    A table separator row says nothing at all, and every rule or fence costs one
+    of the few lines max_output_lines allows.
+    """
+    line = line.strip()
+    if not line or _HORIZONTAL_RULE.match(line) or _CODE_FENCE.match(line):
+        return ""
+    if _is_table_divider(line):
+        return ""
+    if line.startswith("|"):
+        line = _flatten_table_row(line)
+    line = _HEADING.sub("", line)
+    for _ in range(2):  # ***nested*** emphasis needs a second pass to unwrap.
+        line = _EMPHASIS.sub(r"\2", line)
+    return line.strip()
+
+
 def _normalize(value: str) -> str:
     value = value.replace("\r\n", "\n").replace("\r", "\n").replace("\t", "    ")
-    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", " ", value).strip()
+    value = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", " ", value)
+    flattened = (_flatten_markdown(line) for line in value.split("\n"))
+    return "\n".join(line for line in flattened if line)
 
 
 def chunk_completion(

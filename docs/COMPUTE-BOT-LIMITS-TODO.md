@@ -41,6 +41,16 @@ harness enforces both budgets. See the
 No output-byte, line, RPM, concurrency, prompt, or pending-depth increase
 belongs in Gate A.
 
+## Line efficiency: outside the gates
+
+Markdown flattening and the `[completion] system_prompt` were added on
+2026-07-30 after a 1.4 KiB answer was truncated at 35% of its byte budget: a
+markdown table had spent all 15 lines, four of them on a separator row and two
+horizontal rules that carried nothing. Both changes make a reply spend fewer
+lines on formatting instead of raising a limit, so neither breaches Gate A or
+Gate B. Line-budget complaints should be answered this way first; a table that
+previously consumed the whole budget now leaves room for the prose around it.
+
 ## Gate B: required before throughput increases
 
 Done on 2026-07-30:
