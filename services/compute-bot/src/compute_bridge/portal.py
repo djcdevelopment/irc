@@ -36,6 +36,10 @@ class CommunityPortalClient:
         )
         return list(value.get("agents") or [])
 
+    async def storefronts(self) -> list[dict]:
+        value = await self._request("GET", "/api/internal/storefronts")
+        return list(value.get("storefronts") or [])
+
     async def invite_agent(
         self, owner_account: str, herder_account: str, agent_name: str
     ) -> dict:

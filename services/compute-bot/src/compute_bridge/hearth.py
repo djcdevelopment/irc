@@ -33,6 +33,61 @@ class HearthClient:
         # restarts without sharing a failed MCP session between Herder owners.
         return None
 
+    @staticmethod
+    def _tools(value: Any) -> list[dict[str, Any]]:
+        return [
+            {
+                "name": tool.name,
+                "description": tool.description or "",
+                "input_schema": tool.inputSchema or {},
+            }
+            for tool in getattr(value, "tools", [])
+        ]
+
+    async def storefront(self, *, principal_id: str | None = None) -> dict[str, Any]:
+        """Read the live, caller-filtered HEARTH discovery surface.
+
+        This deliberately uses only read-only tools already granted to the IRC
+        adapter. The result is a short-lived projection for presentation; it is
+        never persisted as a second catalog by BotHerder.
+        """
+        async with self._session() as session:
+            listed = await session.list_tools()
+            tool_names = {item["name"] for item in self._tools(listed)}
+            projection: dict[str, Any] = {
+                "tools": self._tools(listed),
+                "operations": [],
+                "providers": [],
+                "kernel": {},
+            }
+            for name, key in (
+                ("list_operations", "operations"),
+                ("list_execution_providers", "providers"),
+                ("kernel_status", "kernel"),
+            ):
+                if name not in tool_names:
+                    continue
+                try:
+                    projection[key] = await self._call(session, name, {})
+                except ModelResponseError:
+                    # A partially upgraded gateway should leave the rest of
+                    # the storefront usable and visibly incomplete.
+                    projection[key] = None
+            if "list_owned_executions" in tool_names and principal_id:
+                try:
+                    projection["executions"] = await self._call(
+                        session,
+                        "list_owned_executions",
+                        {
+                            "principal_type": "irc_account",
+                            "principal_id": principal_id,
+                            "limit": 20,
+                        },
+                    )
+                except ModelResponseError:
+                    projection["executions"] = None
+            return projection
+
     @asynccontextmanager
     async def _session(self) -> AsyncIterator[ClientSession]:
         timeout = httpx.Timeout(

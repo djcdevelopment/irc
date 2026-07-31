@@ -92,6 +92,8 @@ class BotHerder:
         self.request_tasks: set[asyncio.Task[None]] = set()
         self.agent_requests: dict[str, PendingAgentRequest] = {}
         self.channels_to_join = {channel for channel in config.irc.channels}
+        if config.storefront.channel:
+            self.channels_to_join.add(config.storefront.channel)
         self._send_lock = asyncio.Lock()
         self._heartbeat_task: asyncio.Task[None] | None = None
         self._capabilities: set[str] = set()
@@ -99,6 +101,8 @@ class BotHerder:
         self._sasl_started = False
         self._connected_monotonic: float | None = None
         self._agents_cache: tuple[float, list[dict]] = (0, [])
+        self._storefront_cache: tuple[float, dict | None] = (0, None)
+        self._community_storefronts_cache: tuple[float, list[dict]] = (0, [])
         if self.metrics:
             self.metrics.register_herder(
                 self.config.irc.account, self.config.irc.owner_account
@@ -115,6 +119,9 @@ class BotHerder:
                     raise
                 except Exception as exc:
                     if not self.stop_event.is_set():
+                        LOGGER.exception(
+                            "irc_session_failed herder=%s", self.config.irc.account
+                        )
                         LOGGER.warning(
                             "irc_disconnected herder=%s error_type=%s "
                             "retry_seconds=%.1f",
@@ -337,22 +344,29 @@ class BotHerder:
         command, _, rest = addressed.partition(" ")
         command = command.casefold().lstrip("!")
         if command == "help":
-            await self._reply(
-                target,
-                f"{nick}: !ask <prompt> | !ask <model-or-agent> <prompt> | "
-                "!models | !status",
-            )
-            if self.config.community.guide_url:
-                await self._reply(
-                    target,
-                    f"{nick}: guide: {self.config.community.guide_url}",
-                )
+            await self._help(target, nick)
+        elif command == "about":
+            await self._about(target, nick)
+        elif command in {"catalog", "capabilities"}:
+            await self._catalog(target, nick)
+        elif command == "hardware":
+            await self._hardware(target, nick)
         elif command == "models":
             await self._list_models(target, nick)
+        elif command == "agents":
+            await self._list_agents(target)
         elif command == "ask":
             await self._start_request(target, nick, account, rest)
         elif command == "status":
             await self._status(target, nick)
+        elif command == "browse":
+            await self._browse(target, nick)
+        elif command == "compare":
+            await self._compare(target, nick, rest)
+        elif command == "whohas":
+            await self._whohas(target, nick, rest)
+        elif command in {"recent", "artifacts"}:
+            await self._storefront_unavailable(target, nick, command)
 
     def _default_model(self) -> ModelConfig | None:
         """The model used when the caller names no provider. An explicit
@@ -438,6 +452,268 @@ class BotHerder:
             f"{prefix}{self.config.irc.nick} online {uptime}; "
             f"pending={self.pending_count}; owner={self.config.irc.owner_account}; "
             f"execution={self.config.hearth.mode if self.config.hearth else 'direct'}",
+        )
+        projection = await self._get_storefront()
+        kernel = (projection or {}).get("kernel") or {}
+        if kernel:
+            await self._reply(
+                target,
+                f"{prefix}HEARTH live; ledger_events={kernel.get('event_count', 'unknown')}; gateway_providers={len(kernel.get('providers') or [])}",
+            )
+
+    async def _get_storefront(self, *, refresh: bool = False) -> dict | None:
+        cached_at, cached = self._storefront_cache
+        if not refresh and time.monotonic() - cached_at < 15:
+            return cached
+        if not self.hearth:
+            return None
+        try:
+            value = await self.hearth.storefront(
+                principal_id=self.config.irc.owner_account
+            )
+        except Exception as exc:
+            LOGGER.warning(
+                "hearth_storefront_unavailable herder=%s error_type=%s",
+                self.config.irc.account,
+                type(exc).__name__,
+            )
+            value = None
+        if isinstance(value, dict):
+            for key in ("operations", "providers"):
+                value[key] = self._projection_list(value.get(key), key)
+        self._storefront_cache = (time.monotonic(), value)
+        return value
+
+    @staticmethod
+    def _projection_list(value: object, name: str) -> list[dict]:
+        if isinstance(value, list):
+            return [item for item in value if isinstance(item, dict)]
+        if isinstance(value, dict):
+            for key in (name, "items", "result", "data"):
+                nested = value.get(key)
+                if isinstance(nested, list):
+                    return [item for item in nested if isinstance(item, dict)]
+        return []
+
+    async def _help(self, target: str, nick: str) -> None:
+        projection = await self._get_storefront()
+        names = {
+            item.get("name")
+            for item in (projection or {}).get("operations", [])
+            if isinstance(item, dict)
+        }
+        commands = ["!about", "!catalog", "!hardware", "!models", "!agents", "!status"]
+        if "llm.chat" in names or not projection:
+            commands.insert(0, "!ask <prompt>")
+        await self._reply(target, f"{nick}: " + " | ".join(commands))
+        await self._reply(
+            target,
+            f"{nick}: !recent | !artifacts | !browse | !compare <herder> <herder> | !whohas <capability>",
+        )
+        if projection:
+            tools = [
+                item.get("name")
+                for item in projection.get("tools", [])
+                if isinstance(item, dict) and item.get("name")
+            ]
+            await self._reply(
+                target,
+                f"{nick}: HEARTH tools={len(tools)}; use !catalog for live operations and providers",
+            )
+            executions = self._projection_list(projection.get("executions"), "executions")
+            if executions:
+                await self._reply(target, f"{nick}: !recent | !artifacts")
+        if self.config.community.guide_url:
+            await self._reply(target, f"{nick}: guide: {self.config.community.guide_url}")
+
+    async def _about(self, target: str, nick: str) -> None:
+        about = self.config.storefront.about
+        if about:
+            await self._reply(target, f"{nick}: {about}")
+        else:
+            await self._reply(target, f"{nick}: {self.config.irc.nick}; no owner introduction published")
+
+    async def _catalog(self, target: str, nick: str) -> None:
+        projection = await self._get_storefront()
+        if projection:
+            operations = projection.get("operations") or []
+            providers = projection.get("providers") or []
+            tools = projection.get("tools") or []
+            await self._reply(
+                target,
+                f"{nick}: HEARTH live; tools={len(tools)}; operations={len(operations)}; providers={len(providers)}",
+            )
+            for operation in operations[:8]:
+                if isinstance(operation, dict):
+                    await self._reply(
+                        target,
+                        f"{nick}: operation={operation.get('name', '?')} — {operation.get('description', 'no description')}",
+                    )
+            for provider in providers[:8]:
+                if isinstance(provider, dict):
+                    await self._reply(
+                        target,
+                        f"{nick}: provider={provider.get('name', '?')} models={len(provider.get('models') or [])} tags={','.join(provider.get('tags') or [])}",
+                    )
+            return
+        mode = self.config.hearth.mode if self.config.hearth else "direct"
+        await self._reply(
+            target,
+            f"{nick}: operation={self.config.hearth.operation if self.config.hearth else 'local model'}; execution={mode}; access={self.config.irc.access_mode}",
+        )
+        await self._reply(
+            target,
+            f"{nick}: models={len(self.config.models)}; attached_agents=available via !agents; routing=HEARTH" if self.config.hearth and self.config.hearth.mode == "hearth" else f"{nick}: models={len(self.config.models)}; attached_agents=available via !agents; routing=local configuration",
+        )
+
+    async def _hardware(self, target: str, nick: str) -> None:
+        projection = await self._get_storefront()
+        providers = (projection or {}).get("providers") or []
+        public = [item for item in providers if isinstance(item, dict) and item.get("node")]
+        if public:
+            for provider in public[:8]:
+                await self._reply(
+                    target,
+                    f"{nick}: {provider.get('name')} node={provider.get('node')} hardware={provider.get('hardware_profile_id', 'unspecified')} context={provider.get('context_bytes', 'unspecified')} slots={provider.get('parallel_slots', 'unspecified')}",
+                )
+            return
+        await self._reply(
+            target,
+            f"{nick}: hardware is not exposed by the current public HEARTH projection",
+        )
+        await self._reply(
+            target,
+            f"{nick}: configured inference: {', '.join(model.description for model in self.config.models.values())}",
+        )
+
+    async def _get_community_storefronts(self, *, refresh: bool = False) -> list[dict]:
+        cached_at, cached = self._community_storefronts_cache
+        if not refresh and time.monotonic() - cached_at < 15:
+            return cached
+        if not self.portal:
+            return []
+        try:
+            storefronts = await self.portal.storefronts()
+        except PortalError as exc:
+            LOGGER.warning(
+                "community_storefronts_unavailable herder=%s error=%s",
+                self.config.irc.account,
+                str(exc),
+            )
+            storefronts = []
+        self._community_storefronts_cache = (time.monotonic(), storefronts)
+        return storefronts
+
+    async def _browse(self, target: str, nick: str) -> None:
+        storefronts = await self._get_community_storefronts(refresh=True)
+        if not storefronts:
+            await self._reply(target, f"{nick}: no public storefronts are currently indexed")
+            return
+        await self._reply(target, f"{nick}: public storefronts={len(storefronts)}")
+        for storefront in storefronts[:20]:
+            agents = storefront.get("agents") or []
+            agent_text = f" agents={len(agents)}" if agents else ""
+            await self._reply(
+                target,
+                f"{nick}: {storefront.get('display_name', '?')} — {storefront.get('herder_account', '?')} {storefront.get('channel', '')}{agent_text}",
+            )
+        if len(storefronts) > 20:
+            await self._reply(target, f"{nick}: ... {len(storefronts) - 20} more; visit a named storefront")
+
+    async def _compare(self, target: str, nick: str, arguments: str) -> None:
+        names = [part for part in arguments.split() if part]
+        if len(names) < 2:
+            await self._reply(target, f"{nick}: usage: !compare <herder> <herder>")
+            return
+        storefronts = await self._get_community_storefronts(refresh=True)
+        selected: list[dict] = []
+        for name in names[:4]:
+            match = next(
+                (
+                    item
+                    for item in storefronts
+                    if name.casefold()
+                    in {
+                        str(item.get("herder_account", "")).casefold(),
+                        str(item.get("display_name", "")).casefold(),
+                    }
+                ),
+                None,
+            )
+            if match and match not in selected:
+                selected.append(match)
+        if len(selected) < 2:
+            await self._reply(target, f"{nick}: compare needs two indexed storefronts")
+            return
+        projection = await self._get_storefront()
+        providers = self._projection_list((projection or {}).get("providers"), "providers")
+        model_text = ",".join(
+            str(model)
+            for provider in providers
+            for model in (provider.get("models") or [])
+        ) or "not disclosed"
+        for storefront in selected:
+            agents = storefront.get("agents") or []
+            await self._reply(
+                target,
+                f"{nick}: {storefront.get('display_name', '?')} / {storefront.get('herder_account', '?')} models={model_text} agents={len(agents)} channel={storefront.get('channel', '')}",
+            )
+
+    async def _whohas(self, target: str, nick: str, arguments: str) -> None:
+        query = arguments.strip().casefold()
+        if not query:
+            await self._reply(target, f"{nick}: usage: !whohas <capability>")
+            return
+        projection = await self._get_storefront()
+        searchable: list[str] = []
+        for operation in self._projection_list((projection or {}).get("operations"), "operations"):
+            searchable.extend(str(operation.get(key, "")) for key in ("name", "description"))
+        for provider in self._projection_list((projection or {}).get("providers"), "providers"):
+            searchable.extend(str(provider.get(key, "")) for key in ("name", "node", "hardware_profile_id"))
+            searchable.extend(str(value) for value in (provider.get("models") or []) + (provider.get("tags") or []))
+        searchable.extend(model.description for model in self.config.models.values())
+        if not any(query in value.casefold() for value in searchable):
+            await self._reply(target, f"{nick}: no indexed Herder advertises {arguments.strip()}")
+            return
+        storefronts = await self._get_community_storefronts(refresh=True)
+        if not storefronts:
+            await self._reply(target, f"{nick}: capability matched HEARTH, but no storefronts are indexed")
+            return
+        for storefront in storefronts[:20]:
+            await self._reply(
+                target,
+                f"{nick}: {storefront.get('display_name', '?')} — {storefront.get('herder_account', '?')} {storefront.get('channel', '')}",
+            )
+
+    async def _storefront_unavailable(self, target: str, nick: str, command: str) -> None:
+        projection = await self._get_storefront()
+        executions = self._projection_list((projection or {}).get("executions"), "executions")
+        if command in {"recent", "artifacts"} and executions:
+            if command == "recent":
+                for job in executions[:8]:
+                    await self._reply(
+                        target,
+                        f"{nick}: {job.get('operation', 'execution')} {job.get('status', 'unknown')} job={job.get('job_id', '?')}",
+                    )
+            else:
+                artifacts = [
+                    artifact
+                    for job in executions
+                    for artifact in (job.get("artifacts") or [])
+                    if isinstance(artifact, dict)
+                    and artifact.get("role") in {"result", "public"}
+                ]
+                if not artifacts:
+                    await self._reply(target, f"{nick}: no recent public artifacts")
+                for artifact in artifacts[:12]:
+                    await self._reply(
+                        target,
+                        f"{nick}: {artifact.get('role', 'artifact')}={artifact.get('artifact_id', '?')} media={artifact.get('media_type', 'unknown')} sha256={artifact.get('sha256', 'unreported')}",
+                    )
+            return
+        await self._reply(
+            target,
+            f"{nick}: !{command} needs the public HEARTH storefront index; no local duplicate is maintained",
         )
 
     async def _usage(self, target: str) -> None:
@@ -537,6 +813,19 @@ class BotHerder:
         )
 
     async def _list_models(self, target: str, nick: str) -> None:
+        projection = await self._get_storefront()
+        providers = (projection or {}).get("providers") or []
+        if providers:
+            for provider in providers[:8]:
+                if not isinstance(provider, dict):
+                    continue
+                purpose = ",".join(provider.get("tags") or []) or "general"
+                for model in (provider.get("models") or [])[:12]:
+                    await self._reply(
+                        target,
+                        f"{nick}: {model} via {provider.get('name', '?')} purpose={purpose} slots={provider.get('parallel_slots', 'unknown')}",
+                    )
+            return
         for model in self.config.models.values():
             await self._reply(target, f"{nick}: {model.name} - {model.description}")
         try:

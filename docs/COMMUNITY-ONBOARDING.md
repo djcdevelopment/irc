@@ -28,7 +28,10 @@ to add Quassel.
 7. Send the proof command shown by the portal.
 
 The completed outcome is a personal Ergo SASL identity, persistent Lounge
-login, automatic `#general`/`#ops` networks, and an owner-scoped BotHerder.
+login, automatic `#general`/`#ops` channels, a persistent
+`#herder-<display-name>` storefront, and an owner-scoped BotHerder. The
+storefront channel name is derived by lowercasing the display name, replacing
+non-alphanumeric runs with hyphens, and prefixing `#herder-`.
 The same account password is used for Ergo SASL and the member's private Lounge
 login; they are not separate credentials.
 Steam/OpenID recovery binding is not implemented yet and is clearly labeled as
@@ -41,7 +44,7 @@ The same credential works in Quassel Monolithic/Standalone:
 - TLS and certificate verification: enabled
 - nickname and SASL account: the chosen IRC name
 - SASL password: the one-time displayed password
-- automatic channels: `#general,#ops`
+- automatic channels: `#general,#ops,#herder-<display-name>`
 
 The public member guide is available before or after login:
 
@@ -57,6 +60,11 @@ The same commands, examples, private controls, remote-agent setup, limits, and
 troubleshooting steps are presented as a mobile-friendly webpage at
 `https://am4.tail8e749c.ts.net/guide/`. The bot also returns this link from
 `!help`.
+
+The member's `#herder-<display-name>` channel is the persistent storefront for
+read-only catalog, hardware, model, agent, status, recent-activity, and artifact
+views. The complete storefront command list and its HEARTH projection boundary
+are documented in [COMPUTE-BOT.md](COMPUTE-BOT.md).
 
 Your own Herder answers bare `!` commands. You may also name the intended
 Herder explicitly:

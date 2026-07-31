@@ -128,6 +128,80 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
         await self._channel("!models")
         self.assertEqual(self.replies, [("#general", "Alice: test - Test model")])
 
+    async def test_storefront_commands_project_configured_state(self):
+        self.bot.config = replace(
+            self.bot.config,
+            storefront=replace(
+                self.bot.config.storefront,
+                channel="#herder-alice",
+                about="AI systems and practical tooling.",
+            ),
+        )
+        await self._channel("!about")
+        await self._channel("!catalog")
+        await self._channel("!hardware")
+        self.assertEqual(self.replies[0], ("#general", "Alice: AI systems and practical tooling."))
+        self.assertIn("operation=local model", self.replies[1][1])
+        self.assertIn("configured inference: Test model", self.replies[-1][1])
+
+    async def test_storefront_channel_is_joined_when_configured(self):
+        self.bot.config = replace(
+            self.bot.config,
+            storefront=replace(self.bot.config.storefront, channel="#herder-alice"),
+        )
+        self.bot.channels_to_join = {channel for channel in self.bot.config.irc.channels}
+        if self.bot.config.storefront.channel:
+            self.bot.channels_to_join.add(self.bot.config.storefront.channel)
+        self.assertIn("#herder-alice", self.bot.channels_to_join)
+
+    async def test_unavailable_cross_herder_discovery_is_explicit(self):
+        await self._channel("!whohas image generation")
+        self.assertIn("no indexed Herder", self.replies[0][1])
+
+    async def test_storefront_prefers_live_hearth_projection(self):
+        class FakeHearth:
+            config = None
+
+            async def storefront(self, *, principal_id=None):
+                return {
+                    "tools": [{"name": "list_operations"}],
+                    "operations": [{"name": "llm.chat", "description": "chat"}],
+                    "providers": [{
+                        "name": "am4-moe",
+                        "models": ["gpt-oss-120b"],
+                        "tags": ["research"],
+                        "node": "am4",
+                        "hardware_profile_id": "am4-dual-b70",
+                        "context_bytes": 57344,
+                        "parallel_slots": 4,
+                    }],
+                    "kernel": {"event_count": 42, "providers": ["execution_control"]},
+                    "executions": [{
+                        "job_id": "job_1",
+                        "operation": "llm.chat",
+                        "status": "succeeded",
+                        "artifacts": [{"artifact_id": "art_1", "role": "result", "media_type": "text/plain", "sha256": "abc"}],
+                    }],
+                }
+
+            async def close(self):
+                return None
+
+        await self.bot.model_client.close()
+        self.bot = BotHerder(app_config(Path(self.temporary.name) / "hearth-heartbeat"), hearth=FakeHearth())
+        self.bot.registered = True
+        self.bot._reply = lambda target, text: self.replies.append((target, text)) or asyncio.sleep(0, result=True)
+        await self._channel("!models")
+        await self._channel("!hardware")
+        await self._channel("!status")
+        await self._channel("!recent")
+        await self._channel("!artifacts")
+        self.assertIn("gpt-oss-120b via am4-moe", self.replies[0][1])
+        self.assertIn("hardware=am4-dual-b70", self.replies[1][1])
+        self.assertTrue(any("ledger_events=42" in text for _, text in self.replies))
+        self.assertIn("job=job_1", self.replies[-2][1])
+        self.assertIn("result=art_1", self.replies[-1][1])
+
     async def test_help_links_to_configured_public_guide(self):
         self.bot.config = replace(
             self.bot.config,
@@ -142,8 +216,13 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
             [
                 (
                     "#general",
-                    "Alice: !ask <prompt> | !ask <model-or-agent> <prompt> | "
-                    "!models | !status",
+                    "Alice: !ask <prompt> | !about | !catalog | !hardware | "
+                    "!models | !agents | !status",
+                ),
+                (
+                    "#general",
+                    "Alice: !recent | !artifacts | !browse | !compare <herder> <herder> | "
+                    "!whohas <capability>",
                 ),
                 (
                     "#general",
@@ -349,7 +428,7 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
                 params=("#general", "AlicesHerder: help"),
             )
         )
-        self.assertIn("ask <model-or-agent>", self.replies[-1][1])
+        self.assertTrue(any("!ask <prompt>" in text for _, text in self.replies))
         release.set()
         await asyncio.gather(*self.bot.request_tasks)
         self.assertEqual(self.bot.pending_count, 0)

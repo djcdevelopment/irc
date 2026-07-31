@@ -8,6 +8,7 @@ This repository deploys a lightweight IRC environment with Docker Compose:
 - The Lounge private browser client and administrative fallback
 - A one-time onboarding portal and public private-mode browser lobby
 - One owner-scoped BotHerder IRC identity per community member
+- One persistent `#herder-<display-name>` storefront channel per member
 - HEARTH-backed canonical AI execution with durable jobs, global provider
   capacity, and immutable result artifacts
 - An outbound-only remote-agent adapter for member-controlled model endpoints
@@ -19,6 +20,10 @@ Tailscale Funnel at `am4.tail8e749c.ts.net:8443`; users do not need Tailscale.
 The previous OMEN deployment is retained as a stopped rollback copy.
 The architecture pivots, lessons, and remaining reliability work are recorded
 in [docs/RETROSPECTIVE.md](docs/RETROSPECTIVE.md).
+The first personal storefront prototype is covered by
+[docs/RETROSPECTIVE-STOREFRONT-PROTOTYPE.md](docs/RETROSPECTIVE-STOREFRONT-PROTOTYPE.md);
+ongoing human observations belong in
+[docs/STOREFRONT-UX-JOURNAL.md](docs/STOREFRONT-UX-JOURNAL.md).
 
 Pinned official images:
 
@@ -52,7 +57,9 @@ network for each invited member. There is no shared password.
 
 Each member also receives a separately authenticated, owner-scoped BotHerder
 session with their chosen IRC name. It can use operator-allow-listed AM4 models
-and invite any number of outbound remote agents. See
+and invite any number of outbound remote agents. The member's persistent
+`#herder-<display-name>` channel presents the Herder's read-only laboratory
+view from canonical HEARTH and community-registry data. See
 [docs/COMMUNITY-ONBOARDING.md](docs/COMMUNITY-ONBOARDING.md) and
 [docs/COMPUTE-BOT.md](docs/COMPUTE-BOT.md).
 
@@ -143,7 +150,8 @@ Do not use `tailscale funnel reset`; it would also remove AM4's gallery route.
 - Certificate verification: enabled; no private trust exception
 - Nickname and SASL account: personal Ergo account (`admin` initially)
 - SASL mechanism: PLAIN
-- Automatic joins: `#general`, `#ops`
+- Automatic joins: `#general`, `#ops`, and the member's
+  `#herder-<display-name>` storefront (`#herder-derek` for the administrator)
 - Reconnect: enabled, 10-second delay, unlimited retries
 
 Existing clients should remove or disable the old OMEN `6697`/`127.0.0.1`

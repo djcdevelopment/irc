@@ -407,12 +407,15 @@ function Initialize-ErgoState {
         'PRIVMSG ChanServ :REGISTER #general'
         'JOIN #ops'
         'PRIVMSG ChanServ :REGISTER #ops'
+        'JOIN #herder-derek'
+        'PRIVMSG ChanServ :REGISTER #herder-derek'
         'PRIVMSG ChanServ :INFO #general'
         'PRIVMSG ChanServ :INFO #ops'
+        'PRIVMSG ChanServ :INFO #herder-derek'
         'PRIVMSG #ops :Infrastructure channel initialized by bootstrap.'
         'QUIT :Bootstrap channel setup complete'
     )
-    if ($channels -notmatch 'Channel #general is registered' -or $channels -notmatch 'Channel #ops is registered') {
+    if ($channels -notmatch 'Channel #general is registered' -or $channels -notmatch 'Channel #ops is registered' -or $channels -notmatch 'Channel #herder-derek is registered') {
         throw "Could not create or confirm the initial channels. Server response:`n$channels"
     }
 }

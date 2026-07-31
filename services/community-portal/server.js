@@ -327,6 +327,15 @@ function validDisplayName(value, fallback = "Community member") {
 	return text;
 }
 
+function storefrontChannel(displayName) {
+	const slug = displayName
+		.toLowerCase()
+		.replace(/[^a-z0-9]+/g, "-")
+		.replace(/^-+|-+$/g, "")
+		.slice(0, 56);
+	return `#herder-${slug || "member"}`;
+}
+
 function validProvisioningPassword(value) {
 	if (
 		typeof value !== "string" ||
@@ -639,6 +648,28 @@ class IRCSession {
 		);
 	}
 
+	async registerChannel(channel) {
+		if (!/^#[^\x00\x07\r\n ,:]{1,63}$/.test(channel)) {
+			throw new Error("invalid storefront channel");
+		}
+		this.send(`JOIN ${channel}`);
+		await this.waitFor(
+			(value) =>
+				(value.includes(" JOIN ") && value.includes(channel)) ||
+				(value.includes(" 403 ") && value.includes(channel))
+		);
+		this.send(`PRIVMSG ChanServ :REGISTER ${channel}`);
+		const line = await this.waitFor(
+			(value) =>
+				value.includes("ChanServ") &&
+				/(successfully registered|already registered|already exists|registered)/i.test(value)
+		);
+		if (/successfully registered|already registered|already exists|registered/i.test(line)) {
+			return "registered";
+		}
+		throw new Error("Ergo rejected the storefront channel registration");
+	}
+
 	close() {
 		if (this.socket && !this.socket.destroyed) {
 			try {
@@ -711,7 +742,18 @@ async function ensureAccounts(accounts) {
 	}
 }
 
+async function ensureStorefrontChannel(channel) {
+	const registrar = new IRCSession();
+	try {
+		await registrar.authenticateRegistrar();
+		return await registrar.registerChannel(channel);
+	} finally {
+		registrar.close();
+	}
+}
+
 function networkConfig(account, password, displayName) {
+	const storefront = storefrontChannel(displayName);
 	return {
 		uuid: crypto.randomUUID(),
 		awayMessage: "",
@@ -739,6 +781,7 @@ function networkConfig(account, password, displayName) {
 		channels: [
 			{name: "#general", muted: false, key: ""},
 			{name: "#ops", muted: false, key: ""},
+			{name: storefront, muted: false, key: ""},
 		],
 	};
 }
@@ -821,7 +864,7 @@ function ensureHerderMember({
 		account: herderAccount,
 		nick: herderAccount,
 		irc_password: herderPassword,
-		channels: ["#general", "#ops"],
+		channels: ["#general", "#ops", storefrontChannel(displayName)],
 		access_mode: "owner",
 		created_utc: nowIso(),
 	};
@@ -994,6 +1037,7 @@ async function redeemMember(invite, submitted) {
 			field: "herder_account",
 		},
 	]);
+	await ensureStorefrontChannel(storefrontChannel(credentials.displayName));
 	ensureLoungeUser(
 		credentials.ownerAccount,
 		credentials.humanPassword,
@@ -1037,7 +1081,7 @@ async function redeemMember(invite, submitted) {
 		lounge_url: config.loungeUrl,
 		irc_host: config.ircPublicHost,
 		irc_port: config.ircPublicPort,
-		channels: ["#general", "#ops"],
+		channels: ["#general", "#ops", storefrontChannel(credentials.displayName)],
 		message:
 			"Your account and BotHerder are ready. This password is shown once.",
 	};
@@ -1298,6 +1342,7 @@ async function route(request, response) {
 			"BotHerder account"
 		);
 		const displayName = validDisplayName(body.display_name, ownerAccount);
+		await ensureStorefrontChannel(storefrontChannel(displayName));
 		if (body.account_password !== undefined) {
 			const password = validProvisioningPassword(body.account_password);
 			if (!(await verifyAccountPassword(ownerAccount, password))) {
@@ -1400,6 +1445,44 @@ async function route(request, response) {
 			)
 			.all(owner, herder);
 		return jsonResponse(response, 200, {agents});
+	}
+	if (request.method === "GET" && pathname === "/api/internal/storefronts") {
+		requireToken(request, config.internalToken);
+		const members = database
+			.prepare(
+				`SELECT owner_account, display_name, herder_account, created_at
+				 FROM members ORDER BY display_name COLLATE NOCASE`
+			)
+			.all();
+		const agents = database
+			.prepare(
+				`SELECT owner_account, herder_account, account, display_name, state
+				 FROM agents WHERE state = 'active' ORDER BY display_name COLLATE NOCASE`
+			)
+			.all();
+		const agentsByHerder = new Map();
+		for (const agent of agents) {
+			const key = `${agent.owner_account}\0${agent.herder_account}`.toLowerCase();
+			const list = agentsByHerder.get(key) || [];
+			list.push({
+				account: agent.account,
+				display_name: agent.display_name,
+				state: agent.state,
+			});
+			agentsByHerder.set(key, list);
+		}
+		return jsonResponse(response, 200, {
+			storefronts: members.map((member) => ({
+				owner_account: member.owner_account,
+				display_name: member.display_name,
+				herder_account: member.herder_account,
+				channel: storefrontChannel(member.display_name),
+				created_at: member.created_at,
+				agents: agentsByHerder.get(
+					`${member.owner_account}\0${member.herder_account}`.toLowerCase()
+				) || [],
+			})),
+		});
 	}
 	if (request.method === "POST" && pathname === "/api/internal/agents/revoke") {
 		requireToken(request, config.internalToken);

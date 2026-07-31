@@ -30,6 +30,37 @@ Your own Herder answers a bare `!` command:
 !status
 ```
 
+Each member also has one persistent storefront channel, such as
+`#herder-derek`. Its read-only laboratory view is projected from HEARTH and
+the community registrar:
+
+```text
+!about
+!catalog
+!hardware
+!models
+!agents
+!status
+!recent
+!artifacts
+!browse
+!compare <herder> <herder>
+!whohas <capability>
+```
+
+`!catalog`, `!models`, `!hardware`, `!status`, `!recent`, and `!artifacts`
+use live canonical HEARTH projections. `!browse`, `!compare`, and `!whohas`
+use the public storefront index and never expose provider endpoints, prompts,
+credentials, or input artifacts. The owner introduction is the only
+storefront text authored outside those projections.
+
+The first live channel is a research prototype. Its observation protocol and
+evidence log are in [STOREFRONT-UX-JOURNAL.md](STOREFRONT-UX-JOURNAL.md);
+implementation decisions and limitations are summarized in
+[RETROSPECTIVE-STOREFRONT-PROTOTYPE.md](RETROSPECTIVE-STOREFRONT-PROTOTYPE.md).
+During the observation period, avoid changing commands or presentation unless
+repeated evidence supports a small adjustment.
+
 Naming a model or agent is optional. When the first word is not a known
 provider, the whole line is the question and the configured `default_model`
 answers it. The acknowledgement names whichever provider was chosen —

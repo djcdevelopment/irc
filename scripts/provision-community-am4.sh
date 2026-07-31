@@ -292,6 +292,18 @@ PY
 )
 oper_username="${operator_credentials[0]}"
 oper_password="${operator_credentials[1]}"
+mapfile -t admin_credentials < <(
+    python3 - "$bootstrap_file" <<'PY'
+import json
+import sys
+with open(sys.argv[1], encoding="utf-8") as handle:
+    value = json.load(handle)
+print(value["AdminAccount"])
+print(value["AdminPassword"])
+PY
+)
+admin_account="${admin_credentials[0]}"
+admin_password="${admin_credentials[1]}"
 registrar_password="$(
     sed -n 's/^COMMUNITY_REGISTRAR_PASSWORD=//p' "$community_env_file"
 )"
@@ -336,6 +348,25 @@ register_account() {
 
 register_account "CommunityRegistrar" "$registrar_password"
 register_account "DereksBotHerder" "$herder_password"
+
+step "Registering Derek's storefront channel"
+sasl_plain="$(printf '\0%s\0%s' "$admin_account" "$admin_password" | base64 -w0)"
+storefront_setup="$(
+    irc_session 0.45 \
+        "CAP LS 302" \
+        "NICK $admin_account" \
+        "USER bootstrap 0 * :Storefront channel registration" \
+        "CAP REQ :sasl" \
+        "AUTHENTICATE PLAIN" \
+        "AUTHENTICATE $sasl_plain" \
+        "CAP END" \
+        "JOIN #herder-derek" \
+        "PRIVMSG ChanServ :REGISTER #herder-derek" \
+        "PRIVMSG ChanServ :INFO #herder-derek" \
+        "QUIT :Storefront registration complete"
+)"
+grep -Eq 'registered|already registered|already exists' <<<"$storefront_setup" ||
+    die "Derek's storefront channel was not registered"
 
 step "Building and starting the portal and BotHerder supervisor"
 "${compose[@]}" -f "$compose_file" config --quiet

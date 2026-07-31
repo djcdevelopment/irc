@@ -15,6 +15,12 @@ channels = ["#general", "#ops"]
 reconnect_initial_seconds = 2
 reconnect_max_seconds = 60
 
+[storefront]
+# First live storefront pilot. Keep the public introduction small; operational
+# inventory is projected from HEARTH and the attached-agent registry.
+channel = "#herder-derek"
+about = "Derek's BotHerder — AI systems, local inference, research, and practical tooling."
+
 [community]
 portal_url = "http://127.0.0.1:9010"
 guide_url = "https://am4.tail8e749c.ts.net/guide/"

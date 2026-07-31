@@ -110,6 +110,15 @@ async function main() {
 		);
 		return {status: response.status, body: await response.json()};
 	};
+	const get = async (pathname, token) => {
+		const response = await fetch(
+			`http://127.0.0.1:${portal.port}${pathname}`,
+			{
+				headers: token ? {authorization: `Bearer ${token}`} : {},
+			}
+		);
+		return {status: response.status, body: await response.json()};
+	};
 	const inviteToken = async (displayName) => {
 		const created = await post(
 			"/api/admin/invites",
@@ -131,6 +140,10 @@ async function main() {
 		);
 		const guideBody = await guide.text();
 		assert.match(guideBody, /BotHerder Field Guide/i);
+		assert.match(guideBody, /#herder-&lt;display-name&gt;/);
+		assert.match(guideBody, /!catalog/);
+		assert.match(guideBody, /!artifacts/);
+		assert.match(guideBody, /!whohas &lt;capability&gt;/);
 		assert.match(guideBody, /!ask &lt;model&gt; &lt;prompt&gt;/);
 		assert.match(guideBody, /OpenAI-compatible base URL/);
 		assert.match(guideBody, /Download installer/);
@@ -198,6 +211,11 @@ async function main() {
 		);
 		assert.equal(renamed.body.account, "djmm");
 		assert.equal(renamed.body.herder_account, "djmmsBotHerder");
+		assert.deepEqual(renamed.body.channels, [
+			"#general",
+			"#ops",
+			"#herder-deej",
+		]);
 		assert.equal(
 			ergo.registrations.filter((entry) => entry.account === "djm").length,
 			1,
@@ -208,6 +226,33 @@ async function main() {
 			fs.readFileSync(path.join(root, "lounge", "users", "djmm.json"), "utf8")
 		);
 		assert.equal(lounge.networks[0].saslPassword, renamed.body.password);
+		assert.deepEqual(
+			lounge.networks[0].channels.map((channel) => channel.name),
+			["#general", "#ops", "#herder-deej"]
+		);
+		const herder = JSON.parse(
+			fs.readFileSync(
+				path.join(root, "herder-members", "djmmsBotHerder.json"),
+				"utf8"
+			)
+		);
+		assert.deepEqual(herder.channels, [
+			"#general",
+			"#ops",
+			"#herder-deej",
+		]);
+		const storefronts = await get("/api/internal/storefronts", INTERNAL_TOKEN);
+		assert.equal(storefronts.status, 200);
+		assert.deepEqual(storefronts.body.storefronts, [
+			{
+				owner_account: "djmm",
+				display_name: "Deej",
+				herder_account: "djmmsBotHerder",
+				channel: "#herder-deej",
+				created_at: storefronts.body.storefronts[0].created_at,
+				agents: [],
+			},
+		]);
 
 		// A half-finished attempt keeps the account it created and frees the other.
 		ergo.accounts.set("takenherder", FOREIGN_PASSWORD);
