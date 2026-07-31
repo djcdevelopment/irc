@@ -1,6 +1,11 @@
 import unittest
 
-from compute_bridge.output import TRUNCATION_MARKER, chunk_completion
+from compute_bridge.output import (
+    TRUNCATION_MARKER,
+    chunk_completion,
+    format_bytes,
+    truncation_marker,
+)
 
 
 class OutputTests(unittest.TestCase):
@@ -13,7 +18,7 @@ class OutputTests(unittest.TestCase):
         )
         self.assertLessEqual(len(chunks), 15)
         self.assertTrue(all(len(chunk.encode("utf-8")) <= 37 for chunk in chunks))
-        self.assertEqual(chunks[-1], TRUNCATION_MARKER)
+        self.assertTrue(chunks[-1].startswith("… (truncated"))
 
     def test_controls_are_removed(self):
         chunks = chunk_completion(
@@ -35,7 +40,35 @@ class OutputTests(unittest.TestCase):
             max_lines=5,
         )
         self.assertEqual(len(chunks), 5)
-        self.assertEqual(chunks[-1], TRUNCATION_MARKER)
+        self.assertTrue(chunks[-1].startswith("… (truncated"))
+
+    def test_truncation_marker_names_the_full_size(self):
+        content = "x" * 20000
+        chunks = chunk_completion(
+            content,
+            max_payload_bytes=360,
+            max_output_bytes=4096,
+            max_lines=15,
+        )
+        self.assertEqual(chunks[-1], truncation_marker(20000))
+        self.assertIn("19.5KiB", chunks[-1])
+
+    def test_untruncated_output_has_no_marker(self):
+        chunks = chunk_completion(
+            "short answer",
+            max_payload_bytes=360,
+            max_output_bytes=4096,
+            max_lines=15,
+        )
+        self.assertEqual(chunks, ["short answer"])
+
+    def test_format_bytes_scales(self):
+        self.assertEqual(format_bytes(512), "512B")
+        self.assertEqual(format_bytes(2048), "2.0KiB")
+        self.assertEqual(format_bytes(3 * 1024 * 1024), "3.0MiB")
+
+    def test_legacy_marker_prefix_is_preserved(self):
+        self.assertTrue(truncation_marker(10).startswith(TRUNCATION_MARKER[:-1]))
 
     def test_360_byte_boundary_does_not_split_utf8(self):
         content = ("a" * 356) + "\U0001f642" + ("b" * 800)

@@ -11,7 +11,7 @@ from pathlib import Path
 
 from .config import AppConfig, ModelConfig
 from .metrics import MetricsStore
-from .models import ModelClient, ModelError
+from .models import Completion, ModelClient, ModelError
 from .output import chunk_completion
 from .portal import CommunityPortalClient, PortalError
 from .protocol import IRCMessage, parse_irc_line
@@ -21,6 +21,17 @@ from .rate_limit import SlidingWindowRateLimiter
 LOGGER = logging.getLogger("bot_herder")
 REQUIRED_CAPABILITIES = {"sasl", "account-tag", "message-tags"}
 AGENT_PROTOCOL = "HERDER/1"
+GENERIC_AGENT_ERROR = "remote agent reported an error; try again later"
+# Allow-listed HERDER/1 ERROR reasons. Anything else, including the exception
+# type names older adapters send, falls back to the generic message.
+AGENT_ERROR_MESSAGES = {
+    "timeout": "remote agent's provider timed out; try again later",
+    "unavailable": "remote agent could not reach its provider; try again later",
+    "busy": "remote agent is at capacity; try again shortly",
+    "rejected": "remote agent's provider rejected the request",
+    "too_large": "remote agent's result was too large to send",
+    "cancelled": "request cancelled",
+}
 
 
 class IRCConnectionError(RuntimeError):
@@ -486,14 +497,6 @@ class BotHerder:
             )
             return
 
-        decision = self.rate_limiter.check(account)
-        if not decision.allowed:
-            await self._reply(
-                target,
-                f"{nick}: rate limit reached; retry in about "
-                f"{decision.retry_after_seconds}s",
-            )
-            return
         prompt = prompt.strip()
         if len(prompt.encode("utf-8")) > self.config.limits.max_prompt_bytes:
             await self._reply(
@@ -502,39 +505,53 @@ class BotHerder:
                 f"{self.config.limits.max_prompt_bytes}-byte limit",
             )
             return
+
+        model = self.config.models.get(provider_name.casefold())
+        agent = None
+        if model is None:
+            try:
+                agents = await self._get_agents()
+            except PortalError:
+                agents = []
+            agent = next(
+                (
+                    item
+                    for item in agents
+                    if item["state"] == "active"
+                    and provider_name.casefold()
+                    in {
+                        item["account"].casefold(),
+                        item["display_name"].casefold(),
+                    }
+                ),
+                None,
+            )
+            if agent is None:
+                await self._reply(
+                    target,
+                    f"{nick}: unknown model or agent {provider_name!r}; "
+                    f"ask {self.config.irc.nick} for models",
+                )
+                return
+
+        # Capacity is consumed only once the request is known to be dispatchable,
+        # so a mistyped model name does not cost the caller a slot.
+        decision = self.rate_limiter.check(account)
+        if not decision.allowed:
+            await self._reply(
+                target,
+                f"{nick}: rate limit reached; retry in about "
+                f"{decision.retry_after_seconds}s",
+            )
+            return
         if self.pending_count >= self.config.limits.max_pending_requests:
             await self._reply(target, f"{nick}: request queue is full; try again later")
             return
 
-        model = self.config.models.get(provider_name.casefold())
         if model is not None:
             await self._start_local_request(target, nick, account, model, prompt)
-            return
-        try:
-            agents = await self._get_agents()
-        except PortalError:
-            agents = []
-        agent = next(
-            (
-                item
-                for item in agents
-                if item["state"] == "active"
-                and provider_name.casefold()
-                in {
-                    item["account"].casefold(),
-                    item["display_name"].casefold(),
-                }
-            ),
-            None,
-        )
-        if agent is None:
-            await self._reply(
-                target,
-                f"{nick}: unknown model or agent {provider_name!r}; "
-                f"ask {self.config.irc.nick} for models",
-            )
-            return
-        await self._start_agent_request(target, nick, account, agent, prompt)
+        else:
+            await self._start_agent_request(target, nick, account, agent, prompt)
 
     async def _start_local_request(
         self,
@@ -544,23 +561,24 @@ class BotHerder:
         model: ModelConfig,
         prompt: str,
     ) -> None:
+        request_id = uuid.uuid4().hex[:12]
         self.pending_count += 1
-        await self._reply(target, f"{nick}: working...")
+        await self._reply(target, f"{nick}: working... (req {request_id})")
         task = asyncio.create_task(
-            self._run_local_request(target, nick, account, model, prompt)
+            self._run_local_request(request_id, target, nick, account, model, prompt)
         )
         self.request_tasks.add(task)
         task.add_done_callback(self.request_tasks.discard)
 
     async def _run_local_request(
         self,
+        request_id: str,
         target: str,
         nick: str,
         account: str,
         model: ModelConfig,
         prompt: str,
     ) -> None:
-        request_id = uuid.uuid4().hex[:12]
         started = time.monotonic()
         if self.metrics:
             self.metrics.start_request(
@@ -577,30 +595,35 @@ class BotHerder:
         )
         status = "error"
         output_lines = 0
+        completion: Completion | None = None
         try:
             async with self.semaphore:
                 completion = await self.model_client.complete(model, prompt)
             chunks = chunk_completion(
-                completion,
+                completion.text,
                 max_payload_bytes=self.config.limits.irc_payload_bytes,
                 max_output_bytes=self.config.limits.max_output_bytes,
                 max_lines=self.config.limits.max_output_lines,
             )
             if not chunks:
                 raise ModelError("empty normalized completion")
+            delivered = 0
             for chunk in chunks:
-                await self._reply(target, f"{nick}: {chunk}")
-            status = "ok"
-            output_lines = len(chunks)
+                if await self._reply(target, f"{nick}: {chunk}"):
+                    delivered += 1
+            # A result the caller never received is not a success.
+            status = "ok" if delivered == len(chunks) else "undelivered"
+            output_lines = delivered
             LOGGER.info(
                 "request_completed request_id=%s herder=%s account=%s "
-                "provider=%s duration_ms=%d output_lines=%d",
+                "provider=%s duration_ms=%d output_lines=%d status=%s",
                 request_id,
                 self.config.irc.account,
                 account,
                 model.name,
                 int((time.monotonic() - started) * 1000),
-                len(chunks),
+                delivered,
+                status,
             )
         except ModelError as exc:
             await self._reply(target, f"{nick}: {exc.public_message}; try again later")
@@ -632,6 +655,11 @@ class BotHerder:
                     duration_ms=int((time.monotonic() - started) * 1000),
                     status=status,
                     output_lines=output_lines,
+                    prompt_tokens=completion.prompt_tokens if completion else None,
+                    completion_tokens=(
+                        completion.completion_tokens if completion else None
+                    ),
+                    total_tokens=completion.total_tokens if completion else None,
                 )
 
     async def _start_agent_request(
@@ -660,7 +688,7 @@ class BotHerder:
                 account,
                 f"agent:{agent['account']}",
             )
-        await self._reply(target, f"{nick}: working...")
+        await self._reply(target, f"{nick}: working... (req {request_id})")
         encoded = base64.urlsafe_b64encode(prompt.encode("utf-8")).decode("ascii")
         pieces = [encoded[index : index + 260] for index in range(0, len(encoded), 260)]
         try:
@@ -724,10 +752,11 @@ class BotHerder:
                 )
             return
         if operation == "ERROR":
+            reason = pieces[3].casefold() if len(pieces) > 3 else ""
             await self._finish_agent_request(
                 pending,
                 status="error",
-                public_error="remote agent reported an error; try again later",
+                public_error=AGENT_ERROR_MESSAGES.get(reason, GENERIC_AGENT_ERROR),
             )
             return
         if operation != "RESPONSE" or len(pieces) < 5:
@@ -771,12 +800,16 @@ class BotHerder:
                 public_error="remote agent returned no content",
             )
             return
+        delivered = 0
         for chunk in chunks:
-            await self._reply(
+            if await self._reply(
                 pending.target, f"{pending.requester_nick}: {chunk}"
-            )
+            ):
+                delivered += 1
         await self._finish_agent_request(
-            pending, status="ok", output_lines=len(chunks)
+            pending,
+            status="ok" if delivered == len(chunks) else "undelivered",
+            output_lines=delivered,
         )
 
     async def _finish_agent_request(
@@ -820,7 +853,9 @@ class BotHerder:
             output_lines,
         )
 
-    async def _reply(self, target: str, text: str) -> None:
+    async def _reply(self, target: str, text: str) -> bool:
+        """Send one line. Returns False when the line was dropped, so callers
+        can avoid recording an undelivered result as a success."""
         clean = text.replace("\r", " ").replace("\n", " ").replace("\0", " ")
         maximum = 510 - len(f"PRIVMSG {target} :".encode("utf-8"))
         encoded = clean.encode("utf-8")
@@ -833,6 +868,8 @@ class BotHerder:
                 "irc_reply_dropped herder=%s reason=disconnected",
                 self.config.irc.account,
             )
+            return False
+        return True
 
     async def _send_raw(self, line: str) -> None:
         if "\r" in line or "\n" in line or "\0" in line:

@@ -48,6 +48,44 @@ BotHerder uses host networking so it can reach both
 `127.0.0.1:8082/v1` model endpoint without a Docker-subnet UFW exception.
 This does not change the public Funnel path.
 
+## Ship code to AM4
+
+`/opt/omen-irc` is a plain directory on AM4's local disk. It is not a git
+checkout, not a mount, and not synchronised automatically — the working tree has
+to be copied there before any of the commands below will run new code.
+
+From the workstation:
+
+```bash
+./scripts/deploy-am4.sh
+```
+
+It sends the files git tracks plus new files that are not ignored, so `.env`,
+`.secrets/`, `backups/`, and the generated `config/ergo/ircd.yaml` are never
+shipped and never overwrite host state. It copies rather than mirrors, so
+deleting a file locally does not remove it on AM4 — clean those up by hand.
+
+Override the destination with `AM4_HOST` and `OMEN_IRC_PROJECT_DIR`. AM4 is
+reached as the bare host `am4` over Tailscale MagicDNS as user `derek`; there is
+no `~/.ssh/config` entry, so `ssh am4 true` is the connectivity check.
+
+It uses a single `tar` stream over SSH rather than `scp`, because the
+workstation's Git Bash has no `rsync` and a stream can honour git's ignore rules
+in one pass. The `ssh am4 "… | sudo bash"` shape used elsewhere in this repo came
+from `C:\work\baseline\tools\workbench\Publish-WorkbenchAssets.ps1`, but that
+repo has no whole-tree sync to AM4 — this step was previously manual and
+undocumented, which is why it is written down here.
+
+**Provenance limitation.** This ships loose files, so the host carries no record
+of which commit it is running. `C:\work\baseline\fieldlab\docs\adr\0006` reached
+the opposite conclusion for its GCP host and moved to a `git bundle` transport
+for exactly that reason. Doing the same here would be an improvement, but it
+requires committing before every deploy, so it is deliberately not the default
+while the tree is changing quickly.
+
+The portal image embeds the remote-agent kit, so **rebuild the portal before an
+agent operator downloads their kit** or they will receive the previous adapter.
+
 ## Install or rerun
 
 From AM4:

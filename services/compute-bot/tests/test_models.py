@@ -46,10 +46,53 @@ class ModelClientTests(unittest.IsolatedAsyncioTestCase):
 
         client = await self._client_with_handler(handler)
         result = await client.complete(model_config(), "name a pattern")
-        self.assertEqual(result, "Repository pattern")
+        self.assertEqual(result.text, "Repository pattern")
         self.assertEqual(observed["authorization"], "Bearer super-secret")
         self.assertEqual(observed["body"]["max_tokens"], 512)
         self.assertFalse(observed["body"]["stream"])
+
+    async def test_usage_is_recorded_when_the_endpoint_reports_it(self):
+        client = await self._client_with_handler(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "choices": [{"message": {"content": "ok"}}],
+                    "usage": {
+                        "prompt_tokens": 11,
+                        "completion_tokens": 22,
+                        "total_tokens": 33,
+                    },
+                },
+            )
+        )
+        result = await client.complete(model_config(), "prompt")
+        self.assertEqual(result.prompt_tokens, 11)
+        self.assertEqual(result.completion_tokens, 22)
+        self.assertEqual(result.total_tokens, 33)
+
+    async def test_missing_usage_stays_none_rather_than_zero(self):
+        client = await self._client_with_handler(
+            lambda request: httpx.Response(
+                200, json={"choices": [{"message": {"content": "ok"}}]}
+            )
+        )
+        result = await client.complete(model_config(), "prompt")
+        self.assertIsNone(result.prompt_tokens)
+        self.assertIsNone(result.total_tokens)
+
+    async def test_malformed_usage_is_ignored(self):
+        client = await self._client_with_handler(
+            lambda request: httpx.Response(
+                200,
+                json={
+                    "choices": [{"message": {"content": "ok"}}],
+                    "usage": {"prompt_tokens": "many", "total_tokens": -1},
+                },
+            )
+        )
+        result = await client.complete(model_config(), "prompt")
+        self.assertIsNone(result.prompt_tokens)
+        self.assertIsNone(result.total_tokens)
 
     async def test_empty_content_is_an_error(self):
         client = await self._client_with_handler(

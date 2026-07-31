@@ -196,6 +196,10 @@ Detailed compute-limit gates are in
 - [COMMUNITY-ONBOARDING.md](COMMUNITY-ONBOARDING.md): member and remote-agent
   flows.
 - [COMPUTE-BOT.md](COMPUTE-BOT.md): BotHerder behavior and validation.
+- [HERMES-AGENT.md](HERMES-AGENT.md): connecting a Hermes Agent as a remote
+  agent, and the security tradeoff it carries.
+- [HEARTH-GAP-ANALYSIS.md](HEARTH-GAP-ANALYSIS.md): what HEARTH provides today
+  and what a BotHerder-to-HEARTH migration would require first.
 - [AM4.md](AM4.md): production topology and host layout.
 - [OPERATIONS.md](OPERATIONS.md): administration, backup, recovery, and
   teardown.

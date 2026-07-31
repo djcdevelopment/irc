@@ -206,11 +206,13 @@ def _load_limits(raw: dict) -> LimitsConfig:
         max_output_lines=_integer(
             table, "max_output_lines", "limits", default=15, maximum=100
         ),
+        # 360 is the boundary-tested value; the default matches the deployed
+        # config so an omitted key cannot silently pick an untested size.
         irc_payload_bytes=_integer(
             table,
             "irc_payload_bytes",
             "limits",
-            default=300,
+            default=360,
             minimum=128,
             maximum=430,
         ),

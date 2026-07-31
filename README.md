@@ -54,6 +54,11 @@ and invite any number of outbound remote agents. See
 [docs/COMMUNITY-ONBOARDING.md](docs/COMMUNITY-ONBOARDING.md) and
 [docs/COMPUTE-BOT.md](docs/COMPUTE-BOT.md).
 
+A remote agent is any OpenAI-compatible endpoint the inviting member operates.
+[docs/HERMES-AGENT.md](docs/HERMES-AGENT.md) covers connecting a
+[Hermes Agent](https://github.com/NousResearch/hermes-agent), including the
+security tradeoff of exposing an agent's API server to a chat channel.
+
 ## 5. Current access boundary
 
 | Endpoint | Bind/path | Transport | Audience |

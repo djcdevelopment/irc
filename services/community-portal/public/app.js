@@ -109,6 +109,8 @@ function envText(result) {
 		"OPENAI_API_KEY=replace-me",
 		"OPENAI_MODEL=replace-me",
 		"OPENAI_MAX_TOKENS=512",
+		"OPENAI_TIMEOUT_SECONDS=600",
+		"OPENAI_MAX_CONCURRENT_REQUESTS=2",
 		`AGENT_DESCRIPTION=${result.agent_name}`,
 		"",
 	].join("\n");

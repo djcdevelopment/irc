@@ -6,6 +6,20 @@ import re
 TRUNCATION_MARKER = "… (truncated)"
 
 
+def format_bytes(count: int) -> str:
+    if count < 1024:
+        return f"{count}B"
+    kib = count / 1024
+    if kib < 1024:
+        return f"{kib:.1f}KiB"
+    return f"{kib / 1024:.1f}MiB"
+
+
+def truncation_marker(total_bytes: int) -> str:
+    """Marker naming the full result size, so a reader can judge what was lost."""
+    return f"… (truncated; full result {format_bytes(total_bytes)})"
+
+
 def _utf8_prefix(value: str, maximum_bytes: int) -> str:
     if maximum_bytes <= 0:
         return ""
@@ -31,8 +45,10 @@ def chunk_completion(
     if not normalized:
         return []
 
-    marker_bytes = len(TRUNCATION_MARKER.encode("utf-8"))
-    truncated = len(normalized.encode("utf-8")) > max_output_bytes
+    total_bytes = len(normalized.encode("utf-8"))
+    marker = truncation_marker(total_bytes)
+    marker_bytes = len(marker.encode("utf-8"))
+    truncated = total_bytes > max_output_bytes
     byte_budget = max_output_bytes - marker_bytes if truncated else max_output_bytes
     clipped = _utf8_prefix(normalized, max(1, byte_budget))
 
@@ -60,9 +76,9 @@ def chunk_completion(
 
     if truncated:
         if len(chunks) < max_lines:
-            chunks.append(TRUNCATION_MARKER)
+            chunks.append(marker)
         elif chunks:
-            chunks[-1] = TRUNCATION_MARKER
+            chunks[-1] = marker
         else:
-            chunks = [TRUNCATION_MARKER]
+            chunks = [marker]
     return chunks[:max_lines]

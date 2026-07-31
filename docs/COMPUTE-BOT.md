@@ -82,6 +82,11 @@ outbound adapter. The adapter:
 The transport caps both request and response fragments. BotHerder applies the
 same 4 KiB/15-line public output ceiling to local and remote completions.
 
+Because the seam is any OpenAI-compatible endpoint, an agent framework that
+serves one can join unchanged. See [HERMES-AGENT.md](HERMES-AGENT.md) for
+Hermes Agent, which also documents why exposing an agent's API server to a chat
+channel is a security decision and not only a configuration step.
+
 ## Abuse and resilience controls
 
 Defaults per Herder:
@@ -90,7 +95,10 @@ Defaults per Herder:
 - six requests per rolling minute;
 - 2 KiB prompt;
 - two concurrent and sixteen pending requests;
-- 120-second timeout;
+- 120-second local model timeout;
+- 660-second remote-agent timeout, set above the adapter's own 600-second
+  default so an agentic run reports the agent's specific error rather than this
+  generic ceiling; a stuck request holds one pending slot for that long;
 - 15 output messages / 4 KiB;
 - 360-byte completion chunks, boundary-tested against the IRC 512-byte frame;
 - allow-listed local models and registered active agents only.
@@ -103,6 +111,13 @@ produce a short public error and do not terminate the IRC session.
 `/var/lib/omen-irc/bot-herder/runtime/metrics.sqlite3` stores operational metadata:
 request ID, Herder/caller/provider account names, timestamp, duration, outcome,
 output-line count, and optional provider token totals.
+
+Token totals are read from the provider's `usage` object on both the local and
+remote paths; absent or malformed counts stay unset rather than becoming zero.
+The recorded outcome distinguishes `undelivered` from `ok`, so a completion lost
+to a disconnect is not counted as a success. The request ID is shown in the
+`working...` acknowledgement, which is what joins a channel message to its log
+and ledger entry.
 
 It never stores prompt or completion text. Logs exclude raw IRC frames, HTTP
 bodies, credentials, and message content. Missing provider usage is displayed
