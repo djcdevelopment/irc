@@ -88,9 +88,17 @@ Owner-only private commands:
 status
 usage
 agents
+editlab
 invite <agent-name>
 revoke <agent-account>
 ```
+
+`editlab` is the one owner command that also answers in a channel. It is
+gated on owner-match there regardless of `access_mode`, because the reply
+carries a write-capable token for the owner's lab, and the link is whispered
+to the sender so it never lands in channel scrollback. The public `!help`
+names this DM command set for the owner only — without that pointer a
+channel-only reader has no way to discover it exists.
 
 ## Model presentation registry
 

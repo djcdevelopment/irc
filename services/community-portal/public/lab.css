@@ -85,11 +85,16 @@ header .tagline {
 	font-style: italic;
 }
 
+/* Centre the art as one block, never line by line: text-align:center lays
+   each line out on its own centre, which shears any banner whose lines are
+   not all the same width. Shrink to the widest line, then auto-margin. */
 pre.banner {
 	overflow-x: auto;
-	text-align: center;
+	width: max-content;
+	max-width: 100%;
+	text-align: left;
 	color: var(--lab-accent2);
-	margin: 18px 0;
+	margin: 18px auto;
 	font-size: 12px;
 	line-height: 1.15;
 	text-shadow: 0 0 8px color-mix(in srgb, var(--lab-accent2) 45%, transparent);

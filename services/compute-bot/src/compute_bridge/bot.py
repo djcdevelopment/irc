@@ -366,7 +366,15 @@ class BotHerder:
         command, _, rest = addressed.partition(" ")
         command = command.casefold().lstrip("!")
         if command == "help":
-            await self._help(target, nick)
+            await self._help(target, nick, is_owner)
+        elif command == "editlab":
+            # Owner-only regardless of access_mode. The addressed-command gate
+            # above only enforces ownership when access_mode is "owner", and
+            # this reply carries a write-capable token for the owner's lab —
+            # so the check is repeated here rather than inherited. The link
+            # goes to the sender by whisper, never into channel scrollback.
+            if is_owner:
+                await self._edit_lab(nick)
         elif command == "about":
             await self._about(target, nick)
         elif command in {"catalog", "capabilities"}:
@@ -557,7 +565,7 @@ class BotHerder:
                     return [item for item in nested if isinstance(item, dict)]
         return []
 
-    async def _help(self, target: str, nick: str) -> None:
+    async def _help(self, target: str, nick: str, is_owner: bool = False) -> None:
         projection = await self._get_storefront()
         names = {
             item.get("name")
@@ -585,6 +593,14 @@ class BotHerder:
             executions = self._projection_list(projection.get("executions"), "executions")
             if executions:
                 await self._reply(target, f"{nick}: !recent | !artifacts")
+        # The admin set lives on the DM path, so a channel-only reader has no
+        # way to discover it. Point the owner at it; nobody else can use it.
+        if is_owner:
+            await self._reply(
+                target,
+                f"{nick}: admin commands are owner-only, by DM: "
+                f"/msg {self.config.irc.nick} help",
+            )
         if self.config.community.guide_url:
             await self._reply(target, f"{nick}: guide: {self.config.community.guide_url}")
 

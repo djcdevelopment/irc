@@ -233,13 +233,68 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
                 ),
                 (
                     "#general",
+                    "Alice: admin commands are owner-only, by DM: "
+                    "/msg AlicesHerder help",
+                ),
+                (
+                    "#general",
                     "Alice: guide: https://community.example/guide/",
                 ),
             ],
         )
 
+    async def test_help_hides_the_admin_pointer_from_non_owners(self):
+        self.bot.config = replace(
+            self.bot.config,
+            irc=replace(self.bot.config.irc, access_mode="authenticated"),
+        )
+        await self._channel("AlicesHerder: help", account="Bob")
+        self.assertTrue(self.replies)
+        self.assertFalse(
+            any("admin commands" in text for _, text in self.replies)
+        )
+
     async def test_bare_command_from_non_owner_is_ignored(self):
         await self._channel("!models", account="Bob")
+        self.assertEqual(self.replies, [])
+
+    async def test_channel_editlab_whispers_and_never_hits_the_channel(self):
+        class FakePortal:
+            async def mint_edit_link(self, owner_account, herder_account):
+                return {
+                    "url": "https://portal.invalid/lab/edit#token123",
+                    "expires_at": "soon",
+                }
+
+        self.bot.portal = FakePortal()
+        await self._channel("!editlab")
+        self.assertEqual(len(self.replies), 1)
+        target, text = self.replies[0]
+        # A write-capable token must never land in channel scrollback.
+        self.assertEqual(target, "Alice")
+        self.assertIn("https://portal.invalid/lab/edit#token123", text)
+
+    async def test_addressed_editlab_from_non_owner_mints_nothing(self):
+        # access_mode="authenticated" waives the ownership check for addressed
+        # commands, so editlab has to enforce it itself — otherwise any member
+        # could have an edit token for the owner's lab whispered to them.
+        minted = {"count": 0}
+
+        class FakePortal:
+            async def mint_edit_link(self, owner_account, herder_account):
+                minted["count"] += 1
+                return {
+                    "url": "https://portal.invalid/lab/edit#token123",
+                    "expires_at": "soon",
+                }
+
+        self.bot.portal = FakePortal()
+        self.bot.config = replace(
+            self.bot.config,
+            irc=replace(self.bot.config.irc, access_mode="authenticated"),
+        )
+        await self._channel("AlicesHerder: editlab", account="Bob")
+        self.assertEqual(minted["count"], 0)
         self.assertEqual(self.replies, [])
 
     async def test_bare_bang_requires_a_letter(self):
@@ -825,6 +880,7 @@ class BotStorefrontPresentationTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn(
             "https://portal.invalid/lab/edit#token123", self.replies[0][1]
         )
+
 
     async def test_agent_lookup_refreshes_a_stale_cache_on_miss(self):
         # Live race: the registrar's provisioning session joins the storefront
