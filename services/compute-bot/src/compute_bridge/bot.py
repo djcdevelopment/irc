@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from .config import AppConfig, ModelConfig
+from .ircfmt import DEFAULT_ACCENT, Formatter
 from .metrics import MetricsStore
 from .hearth import HearthClient
 from .models import Completion, ModelClient, ModelError
@@ -96,6 +97,7 @@ class BotHerder:
             self.channels_to_join.add(config.storefront.channel)
         self._send_lock = asyncio.Lock()
         self._heartbeat_task: asyncio.Task[None] | None = None
+        self._snapshot_task: asyncio.Task[None] | None = None
         self._capabilities: set[str] = set()
         self._cap_requested = False
         self._sasl_started = False
@@ -103,6 +105,8 @@ class BotHerder:
         self._agents_cache: tuple[float, list[dict]] = (0, [])
         self._storefront_cache: tuple[float, dict | None] = (0, None)
         self._community_storefronts_cache: tuple[float, list[dict]] = (0, [])
+        self._lab_profile_cache: tuple[float, dict | None] = (0, None)
+        self._greeted_accounts: set[str] = set()
         if self.metrics:
             self.metrics.register_herder(
                 self.config.irc.account, self.config.irc.owner_account
@@ -203,6 +207,10 @@ class BotHerder:
             self._heartbeat_task.cancel()
             await asyncio.gather(self._heartbeat_task, return_exceptions=True)
             self._heartbeat_task = None
+        if self._snapshot_task:
+            self._snapshot_task.cancel()
+            await asyncio.gather(self._snapshot_task, return_exceptions=True)
+            self._snapshot_task = None
         if self.writer:
             self.writer.close()
             try:
@@ -234,6 +242,17 @@ class BotHerder:
             return
         if message.command == "INVITE":
             await self._handle_invite(message)
+            return
+        if message.command == "JOIN":
+            await self._handle_join(message)
+            return
+        if message.command in {"331", "332"}:
+            await self._handle_topic_reply(message)
+            return
+        if message.command == "482":
+            # Missing channel operator status. The welcome topic degrades
+            # silently; provisioning grants +o via ChanServ AMODE.
+            LOGGER.info("topic_set_denied herder=%s", self.config.irc.account)
             return
         if message.command == "PRIVMSG":
             await self._handle_privmsg(message)
@@ -286,10 +305,13 @@ class BotHerder:
         )
         if self.metrics:
             self.metrics.connected(self.config.irc.account)
+        self._greeted_accounts.clear()
         for channel in sorted(self.channels_to_join, key=str.casefold):
             await self._send_raw(f"JOIN {channel}")
         self._touch_heartbeat()
         self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        if self.portal and self.hearth:
+            self._snapshot_task = asyncio.create_task(self._snapshot_loop())
 
     async def _handle_invite(self, message: IRCMessage) -> None:
         account = message.tags.get("account")
@@ -365,8 +387,12 @@ class BotHerder:
             await self._compare(target, nick, rest)
         elif command == "whohas":
             await self._whohas(target, nick, rest)
-        elif command in {"recent", "artifacts"}:
-            await self._storefront_unavailable(target, nick, command)
+        elif command == "recent":
+            await self._recent(target, nick)
+        elif command == "artifacts":
+            await self._artifacts(target, nick)
+        elif command == "guestbook":
+            await self._guestbook(target, nick)
 
     def _default_model(self) -> ModelConfig | None:
         """The model used when the caller names no provider. An explicit
@@ -418,7 +444,7 @@ class BotHerder:
         if command in {"", "help"}:
             await self._reply(
                 nick,
-                "admin: status | usage | agents | invite <agent-name> | "
+                "admin: status | usage | agents | editlab | invite <agent-name> | "
                 "revoke <agent-account>",
             )
             if self.config.community.guide_url:
@@ -431,6 +457,8 @@ class BotHerder:
             await self._usage(nick)
         elif command == "agents":
             await self._list_agents(nick)
+        elif command == "editlab":
+            await self._edit_lab(nick)
         elif command == "invite":
             await self._invite_agent(nick, rest.strip())
         elif command == "revoke":
@@ -447,18 +475,30 @@ class BotHerder:
             minutes, seconds = divmod(remainder, 60)
             uptime = f"{hours}h {minutes}m {seconds}s"
         prefix = f"{nick}: " if nick else ""
+        await self._lab_profile()
+        fmt = self._formatter()
         await self._reply(
             target,
-            f"{prefix}{self.config.irc.nick} online {uptime}; "
-            f"pending={self.pending_count}; owner={self.config.irc.owner_account}; "
-            f"execution={self.config.hearth.mode if self.config.hearth else 'direct'}",
+            f"{prefix}{fmt.accent(self.config.irc.nick)} {fmt.status_word('online')} {uptime}; "
+            + fmt.kv_line(
+                ("pending", self.pending_count),
+                ("owner", self.config.irc.owner_account),
+                (
+                    "execution",
+                    self.config.hearth.mode if self.config.hearth else "direct",
+                ),
+            ),
         )
         projection = await self._get_storefront()
         kernel = (projection or {}).get("kernel") or {}
         if kernel:
             await self._reply(
                 target,
-                f"{prefix}HEARTH live; ledger_events={kernel.get('event_count', 'unknown')}; gateway_providers={len(kernel.get('providers') or [])}",
+                f"{prefix}HEARTH {fmt.status_word('live')}; "
+                + fmt.kv_line(
+                    ("ledger_events", kernel.get("event_count", "unknown")),
+                    ("gateway_providers", len(kernel.get("providers") or [])),
+                ),
             )
 
     async def _get_storefront(self, *, refresh: bool = False) -> dict | None:
@@ -508,7 +548,7 @@ class BotHerder:
         await self._reply(target, f"{nick}: " + " | ".join(commands))
         await self._reply(
             target,
-            f"{nick}: !recent | !artifacts | !browse | !compare <herder> <herder> | !whohas <capability>",
+            f"{nick}: !recent | !artifacts | !guestbook | !browse | !compare <herder> <herder> | !whohas <capability>",
         )
         if projection:
             tools = [
@@ -527,7 +567,20 @@ class BotHerder:
             await self._reply(target, f"{nick}: guide: {self.config.community.guide_url}")
 
     async def _about(self, target: str, nick: str) -> None:
+        profile = await self._lab_profile()
         about = self.config.storefront.about
+        if profile and profile.get("lab_name"):
+            fmt = self._formatter()
+            header = fmt.header(
+                str(profile["lab_name"]), str(profile.get("tagline") or "")
+            )
+            await self._reply(target, f"{nick}: {header}")
+            if about:
+                await self._reply(target, f"{nick}: {about}")
+            web = str(profile.get("web_url") or "")
+            if web:
+                await self._reply(target, f"{nick}: {fmt.kv('web', web)}")
+            return
         if about:
             await self._reply(target, f"{nick}: {about}")
         else:
@@ -536,24 +589,35 @@ class BotHerder:
     async def _catalog(self, target: str, nick: str) -> None:
         projection = await self._get_storefront()
         if projection:
+            await self._lab_profile()
+            fmt = self._formatter()
             operations = projection.get("operations") or []
             providers = projection.get("providers") or []
             tools = projection.get("tools") or []
             await self._reply(
                 target,
-                f"{nick}: HEARTH live; tools={len(tools)}; operations={len(operations)}; providers={len(providers)}",
+                f"{nick}: HEARTH {fmt.status_word('live')}; "
+                + fmt.kv_line(
+                    ("tools", len(tools)),
+                    ("operations", len(operations)),
+                    ("providers", len(providers)),
+                ),
             )
             for operation in operations[:8]:
                 if isinstance(operation, dict):
                     await self._reply(
                         target,
-                        f"{nick}: operation={operation.get('name', '?')} — {operation.get('description', 'no description')}",
+                        f"{nick}: {fmt.kv('operation', fmt.accent(str(operation.get('name', '?'))))} — {operation.get('description', 'no description')}",
                     )
             for provider in providers[:8]:
                 if isinstance(provider, dict):
                     await self._reply(
                         target,
-                        f"{nick}: provider={provider.get('name', '?')} models={len(provider.get('models') or [])} tags={','.join(provider.get('tags') or [])}",
+                        f"{nick}: {fmt.kv('provider', fmt.accent(str(provider.get('name', '?'))))} "
+                        + fmt.kv_line(
+                            ("models", len(provider.get("models") or [])),
+                            ("tags", ",".join(provider.get("tags") or [])),
+                        ),
                     )
             return
         mode = self.config.hearth.mode if self.config.hearth else "direct"
@@ -571,10 +635,18 @@ class BotHerder:
         providers = (projection or {}).get("providers") or []
         public = [item for item in providers if isinstance(item, dict) and item.get("node")]
         if public:
+            await self._lab_profile()
+            fmt = self._formatter()
             for provider in public[:8]:
                 await self._reply(
                     target,
-                    f"{nick}: {provider.get('name')} node={provider.get('node')} hardware={provider.get('hardware_profile_id', 'unspecified')} context={provider.get('context_bytes', 'unspecified')} slots={provider.get('parallel_slots', 'unspecified')}",
+                    f"{nick}: {fmt.accent(str(provider.get('name')))} "
+                    + fmt.kv_line(
+                        ("node", provider.get("node")),
+                        ("hardware", provider.get("hardware_profile_id", "unspecified")),
+                        ("context", provider.get("context_bytes", "unspecified")),
+                        ("slots", provider.get("parallel_slots", "unspecified")),
+                    ),
                 )
             return
         await self._reply(
@@ -604,18 +676,136 @@ class BotHerder:
         self._community_storefronts_cache = (time.monotonic(), storefronts)
         return storefronts
 
+    async def _lab_profile(self, *, refresh: bool = False) -> dict | None:
+        """This Herder's own storefront profile from the community registry:
+        the owner-authored lab identity (name, tagline, channel, accent)."""
+        cached_at, cached = self._lab_profile_cache
+        if not refresh and time.monotonic() - cached_at < 60:
+            return cached
+        profile = next(
+            (
+                item
+                for item in await self._get_community_storefronts()
+                if str(item.get("herder_account", "")).casefold()
+                == self.config.irc.account.casefold()
+            ),
+            None,
+        )
+        self._lab_profile_cache = (time.monotonic(), profile)
+        return profile
+
+    def _formatter(self) -> Formatter:
+        """Color applies only to lines composed here; model and agent output
+        keeps flowing through the control-character strip in output.py."""
+        profile = self._lab_profile_cache[1]
+        accent = (profile or {}).get("irc_accent")
+        return Formatter(
+            enabled=self.config.storefront.color,
+            accent=accent if isinstance(accent, int) else DEFAULT_ACCENT,
+        )
+
+    async def _storefront_channel(self) -> str:
+        profile = await self._lab_profile()
+        channel = str((profile or {}).get("channel") or "")
+        return channel or self.config.storefront.channel
+
+    async def _handle_join(self, message: IRCMessage) -> None:
+        if not message.params:
+            return
+        channel = message.params[0]
+        account = message.tags.get("account")
+        if not account or account == "*":
+            return
+        if account.casefold() == self.config.irc.account.casefold():
+            return
+        storefront = await self._storefront_channel()
+        if not storefront or channel.casefold() != storefront.casefold():
+            return
+        if account.casefold() in self._greeted_accounts:
+            return
+        try:
+            agents = await self._get_agents()
+        except PortalError:
+            agents = []
+        if any(
+            account.casefold() == str(item.get("account", "")).casefold()
+            for item in agents
+        ):
+            return
+        self._greeted_accounts.add(account.casefold())
+        await self._send_banner(channel, message.nick or account)
+
+    async def _send_banner(self, channel: str, nick: str) -> None:
+        """A two-line welcome, small enough to fit one fakelag burst."""
+        profile = await self._lab_profile()
+        if not profile or not profile.get("lab_name"):
+            return
+        fmt = self._formatter()
+        header = fmt.header(
+            str(profile["lab_name"]), str(profile.get("tagline") or "")
+        )
+        await self._reply(channel, f"{nick}: welcome to {header}")
+        hints = "try !help"
+        web = str(profile.get("web_url") or "")
+        if web:
+            hints += f" · web: {web}"
+        await self._reply(channel, f"{nick}: {hints}")
+
+    async def _handle_topic_reply(self, message: IRCMessage) -> None:
+        if len(message.params) < 2:
+            return
+        channel = message.params[1]
+        current = (
+            message.params[2]
+            if message.command == "332" and len(message.params) > 2
+            else ""
+        )
+        storefront = await self._storefront_channel()
+        if not storefront or channel.casefold() != storefront.casefold():
+            return
+        desired = await self._desired_topic()
+        if not desired or current == desired:
+            return
+        await self._send_raw(f"TOPIC {channel} :{desired}")
+
+    async def _desired_topic(self) -> str:
+        profile = await self._lab_profile()
+        lab_name = str((profile or {}).get("lab_name") or "").strip()
+        if not lab_name:
+            return ""
+        headline = f"⚡ {lab_name}"
+        tagline = str(profile.get("tagline") or "").strip()
+        if tagline:
+            headline += f" — {tagline}"
+        web = str(profile.get("web_url") or "").strip()
+        topic = f"{headline} · {web}" if web else headline
+        encoded = topic.encode("utf-8")
+        if len(encoded) > 380:
+            topic = encoded[:380].decode("utf-8", errors="ignore")
+        return topic
+
     async def _browse(self, target: str, nick: str) -> None:
         storefronts = await self._get_community_storefronts(refresh=True)
         if not storefronts:
             await self._reply(target, f"{nick}: no public storefronts are currently indexed")
             return
-        await self._reply(target, f"{nick}: public storefronts={len(storefronts)}")
+        await self._lab_profile()
+        fmt = self._formatter()
+        await self._reply(
+            target, f"{nick}: {fmt.kv('public storefronts', len(storefronts))}"
+        )
         for storefront in storefronts[:20]:
             agents = storefront.get("agents") or []
-            agent_text = f" agents={len(agents)}" if agents else ""
+            agent_text = f" {fmt.kv('agents', len(agents))}" if agents else ""
+            name = str(
+                storefront.get("lab_name")
+                or storefront.get("display_name", "?")
+            )
+            web = str(storefront.get("web_url") or "")
+            web_text = f" {fmt.kv('web', web)}" if web else ""
             await self._reply(
                 target,
-                f"{nick}: {storefront.get('display_name', '?')} — {storefront.get('herder_account', '?')} {storefront.get('channel', '')}{agent_text}",
+                f"{nick}: {fmt.accent(name)} — {storefront.get('herder_account', '?')} {storefront.get('channel', '')}{agent_text}{web_text}",
             )
         if len(storefronts) > 20:
             await self._reply(target, f"{nick}: ... {len(storefronts) - 20} more; visit a named storefront")
@@ -685,32 +875,63 @@ class BotHerder:
                 f"{nick}: {storefront.get('display_name', '?')} — {storefront.get('herder_account', '?')} {storefront.get('channel', '')}",
             )
 
-    async def _storefront_unavailable(self, target: str, nick: str, command: str) -> None:
+    async def _recent(self, target: str, nick: str) -> None:
         projection = await self._get_storefront()
         executions = self._projection_list((projection or {}).get("executions"), "executions")
-        if command in {"recent", "artifacts"} and executions:
-            if command == "recent":
-                for job in executions[:8]:
-                    await self._reply(
-                        target,
-                        f"{nick}: {job.get('operation', 'execution')} {job.get('status', 'unknown')} job={job.get('job_id', '?')}",
-                    )
-            else:
-                artifacts = [
-                    artifact
-                    for job in executions
-                    for artifact in (job.get("artifacts") or [])
-                    if isinstance(artifact, dict)
-                    and artifact.get("role") in {"result", "public"}
-                ]
-                if not artifacts:
-                    await self._reply(target, f"{nick}: no recent public artifacts")
-                for artifact in artifacts[:12]:
-                    await self._reply(
-                        target,
-                        f"{nick}: {artifact.get('role', 'artifact')}={artifact.get('artifact_id', '?')} media={artifact.get('media_type', 'unknown')} sha256={artifact.get('sha256', 'unreported')}",
-                    )
+        if not executions:
+            await self._storefront_unavailable(target, nick, "recent")
             return
+        await self._lab_profile()
+        fmt = self._formatter()
+        for job in executions[:8]:
+            status = str(job.get("status", "unknown"))
+            await self._reply(
+                target,
+                f"{nick}: {job.get('operation', 'execution')} {fmt.status_word(status)} {fmt.kv('job', job.get('job_id', '?'))}",
+            )
+
+    async def _artifacts(self, target: str, nick: str) -> None:
+        projection = await self._get_storefront()
+        executions = self._projection_list((projection or {}).get("executions"), "executions")
+        if not executions:
+            await self._storefront_unavailable(target, nick, "artifacts")
+            return
+        artifacts = [
+            artifact
+            for job in executions
+            for artifact in (job.get("artifacts") or [])
+            if isinstance(artifact, dict)
+            and artifact.get("role") in {"result", "public"}
+        ]
+        if not artifacts:
+            await self._reply(target, f"{nick}: no recent public artifacts")
+        await self._lab_profile()
+        fmt = self._formatter()
+        for artifact in artifacts[:12]:
+            await self._reply(
+                target,
+                f"{nick}: {fmt.kv(str(artifact.get('role', 'artifact')), artifact.get('artifact_id', '?'))} "
+                + fmt.kv_line(
+                    ("media", artifact.get("media_type", "unknown")),
+                    ("sha256", artifact.get("sha256", "unreported")),
+                ),
+            )
+
+    async def _guestbook(self, target: str, nick: str) -> None:
+        profile = await self._lab_profile()
+        web = str((profile or {}).get("web_url") or "")
+        if web:
+            await self._reply(
+                target,
+                f"{nick}: the guestbook will live on the web lab; visit {web}",
+            )
+        else:
+            await self._reply(
+                target,
+                f"{nick}: the guestbook arrives with the web lab; no page is published yet",
+            )
+
+    async def _storefront_unavailable(self, target: str, nick: str, command: str) -> None:
         await self._reply(
             target,
             f"{nick}: !{command} needs the public HEARTH storefront index; no local duplicate is maintained",
@@ -773,6 +994,23 @@ class BotHerder:
         if len(agents) > 15:
             await self._reply(target, f"... {len(agents) - 15} more agents")
 
+    async def _edit_lab(self, target: str) -> None:
+        if not self.portal:
+            await self._reply(target, "the community portal is not configured")
+            return
+        try:
+            value = await self.portal.mint_edit_link(
+                self.config.irc.owner_account, self.config.irc.account
+            )
+        except PortalError as exc:
+            await self._reply(target, str(exc))
+            return
+        await self._reply(
+            target,
+            f"one-hour lab editor link: {value['url']} — presentation only; "
+            "HEARTH remains the source of operational truth",
+        )
+
     async def _invite_agent(self, target: str, name: str) -> None:
         if not name:
             await self._reply(target, "usage: invite <agent-name>")
@@ -816,6 +1054,8 @@ class BotHerder:
         projection = await self._get_storefront()
         providers = (projection or {}).get("providers") or []
         if providers:
+            await self._lab_profile()
+            fmt = self._formatter()
             for provider in providers[:8]:
                 if not isinstance(provider, dict):
                     continue
@@ -823,7 +1063,11 @@ class BotHerder:
                 for model in (provider.get("models") or [])[:12]:
                     await self._reply(
                         target,
-                        f"{nick}: {model} via {provider.get('name', '?')} purpose={purpose} slots={provider.get('parallel_slots', 'unknown')}",
+                        f"{nick}: {fmt.accent(str(model))} via {provider.get('name', '?')} "
+                        + fmt.kv_line(
+                            ("purpose", purpose),
+                            ("slots", provider.get("parallel_slots", "unknown")),
+                        ),
                     )
             return
         for model in self.config.models.values():
@@ -1309,6 +1553,102 @@ class BotHerder:
         while self.registered and not self.stop_event.is_set():
             self._touch_heartbeat()
             await asyncio.sleep(self.config.health.heartbeat_interval_seconds)
+
+    def _trimmed_snapshot(self, projection: dict) -> dict:
+        """Reduce the live HEARTH projection to the small summary the portal
+        renders on the web storefront. Same read-only surface as the IRC
+        commands; nothing here is persisted by the bot."""
+        providers = []
+        for provider in self._projection_list(projection.get("providers"), "providers")[:12]:
+            providers.append(
+                {
+                    "name": str(provider.get("name", ""))[:64],
+                    "models": [
+                        str(model)[:64] for model in (provider.get("models") or [])[:8]
+                    ],
+                    "tags": [
+                        str(tag)[:32] for tag in (provider.get("tags") or [])[:8]
+                    ],
+                }
+            )
+        operations = []
+        for operation in self._projection_list(projection.get("operations"), "operations")[:16]:
+            operations.append(
+                {
+                    "name": str(operation.get("name", ""))[:64],
+                    "description": str(operation.get("description", ""))[:160],
+                }
+            )
+        kernel: dict[str, int] = {}
+        raw_kernel = projection.get("kernel") or {}
+        if isinstance(raw_kernel, dict):
+            if isinstance(raw_kernel.get("event_count"), int):
+                kernel["ledger_events"] = raw_kernel["event_count"]
+            if isinstance(raw_kernel.get("providers"), list):
+                kernel["gateway_providers"] = len(raw_kernel["providers"])
+        recent = []
+        artifacts = []
+        executions = self._projection_list(projection.get("executions"), "executions")
+        for job in executions[:10]:
+            recent.append(
+                {
+                    "operation": str(job.get("operation", "execution"))[:64],
+                    "status": str(job.get("status", "unknown"))[:24],
+                    "finished_at": str(
+                        job.get("finished_at") or job.get("completed_at") or ""
+                    )[:32],
+                }
+            )
+        for job in executions:
+            for artifact in job.get("artifacts") or []:
+                if (
+                    isinstance(artifact, dict)
+                    and artifact.get("role") in {"result", "public"}
+                    and len(artifacts) < 12
+                ):
+                    artifacts.append(
+                        {
+                            "name": str(artifact.get("artifact_id", ""))[:80],
+                            "kind": str(artifact.get("media_type", ""))[:32],
+                            "created_at": str(artifact.get("created_at") or "")[:32],
+                        }
+                    )
+        return {
+            "providers": providers,
+            "operations": operations,
+            "kernel": kernel,
+            "recent": recent,
+            "artifacts": artifacts,
+        }
+
+    async def _push_snapshot(self) -> None:
+        projection = await self._get_storefront()
+        if not isinstance(projection, dict) or not self.portal:
+            return
+        try:
+            await self.portal.push_snapshot(
+                self.config.irc.account, self._trimmed_snapshot(projection)
+            )
+        except PortalError as exc:
+            LOGGER.warning(
+                "storefront_snapshot_push_failed herder=%s error=%s",
+                self.config.irc.account,
+                str(exc),
+            )
+
+    async def _snapshot_loop(self) -> None:
+        while self.registered and not self.stop_event.is_set():
+            try:
+                await self._push_snapshot()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                LOGGER.warning(
+                    "storefront_snapshot_loop_error herder=%s error_type=%s",
+                    self.config.irc.account,
+                    type(exc).__name__,
+                )
+            await asyncio.sleep(300)
 
 
 # Compatibility for Phase 1 imports. User-facing naming is BotHerder.

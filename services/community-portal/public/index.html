@@ -21,7 +21,7 @@
 				<div class="signal">⏱</div>
 				<div>
 					<h2 id="promise-title">About 2 minutes</h2>
-					<p>Leave with browser chat, your own identity, a named BotHerder, and a working model response.</p>
+					<p>Leave with browser chat, your own identity, a named companion bot, your own lab channel, and a working model response.</p>
 				</div>
 			</section>
 
@@ -41,14 +41,23 @@
 				<section class="card">
 					<div class="step">2</div>
 					<div class="card-body">
-						<label for="herder-account">🐑 Name your BotHerder <span>*</span></label>
-						<input id="herder-account" name="herder_account" required minlength="2" maxlength="32" placeholder="SamsBotHerder">
-						<p class="hint">This becomes the bot’s visible IRC identity.</p>
+						<label for="herder-account">🤖 Name your companion <span>*</span></label>
+						<input id="herder-account" name="herder_account" required minlength="2" maxlength="32" placeholder="SamsBot">
+						<p class="hint">Your personal bot’s visible IRC identity. Name it anything you like.</p>
 					</div>
 				</section>
 
 				<section class="card optional">
 					<div class="step">3</div>
+					<div class="card-body">
+						<label for="lab-name">🧪 Name your lab <em>optional</em></label>
+						<input id="lab-name" name="lab_name" maxlength="48" placeholder="Neon Basement">
+						<p class="hint">Your channel becomes <code>#lab-&lt;name&gt;</code> and your page <code>/lab/&lt;name&gt;</code>. Defaults to your display name.</p>
+					</div>
+				</section>
+
+				<section class="card optional">
+					<div class="step">4</div>
 					<div class="card-body">
 						<label for="display-name">🏷 Display name <em>optional</em></label>
 						<input id="display-name" name="display_name" maxlength="80" placeholder="Display name">
@@ -57,7 +66,7 @@
 				</section>
 
 				<button class="primary" type="submit">
-					<span>4</span> 🚀 Create my community space
+					<span>5</span> 🚀 Create my community space
 				</button>
 			</form>
 
@@ -87,7 +96,7 @@
 				<ol>
 					<li class="active">Creating non-oper IRC identities</li>
 					<li>Preparing persistent browser chat</li>
-					<li>Starting the personal BotHerder</li>
+					<li>Starting your personal companion</li>
 				</ol>
 			</section>
 
@@ -101,10 +110,12 @@
 						<span>Password</span>
 						<div class="copy-row"><code id="member-password"></code><button data-copy="member-password" type="button">Copy</button></div>
 					</div>
-					<div><span>Your BotHerder</span><code id="member-herder"></code></div>
+					<div><span>Your companion</span><code id="member-herder"></code></div>
+					<div><span>Your lab channel</span><code id="member-lab"></code></div>
+					<div><span>Your lab page</span><a id="member-lab-url" href="#"></a></div>
 				</div>
 				<a id="open-lobby" class="primary link-button" href="#">Open the browser lobby</a>
-				<a class="guide-link" href="/guide/">Read the BotHerder command guide</a>
+				<a class="guide-link" href="/guide/">Read the companion command guide</a>
 				<div class="next">
 					<p><strong>First proof:</strong> after the lobby opens, send:</p>
 					<code id="first-command"></code>
@@ -117,7 +128,7 @@
 						<li>TLS and certificate verification: on</li>
 						<li>SASL account: the account shown above</li>
 						<li>SASL password: the password shown above</li>
-						<li>Channels: <code>#general,#ops,#herder-&lt;display-name&gt;</code></li>
+						<li>Channels: <code>#general,#ops,#lab-&lt;your-lab&gt;</code></li>
 					</ul>
 				</details>
 			</section>

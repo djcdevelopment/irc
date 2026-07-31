@@ -172,6 +172,70 @@ def admin_request(path: str, payload: dict) -> dict:
         return json.load(response)
 
 
+def internal_request(path: str) -> dict:
+    values = community_values()
+    request = urllib.request.Request(
+        f"http://127.0.0.1:9010{path}",
+        headers={
+            "Authorization": f"Bearer {values['COMMUNITY_INTERNAL_TOKEN']}"
+        },
+    )
+    with urllib.request.urlopen(request, timeout=30) as response:
+        return json.load(response)
+
+
+def lab_acceptance(
+    owner_account: str, herder_account: str, owner: IRCClient
+) -> None:
+    """Personal AI Storefront: profile projection, lab page, editor loop."""
+    storefronts = internal_request("/api/internal/storefronts")["storefronts"]
+    entry = next(
+        (
+            item
+            for item in storefronts
+            if item["owner_account"].casefold() == owner_account.casefold()
+        ),
+        None,
+    )
+    if not entry or not entry.get("lab_slug") or not entry.get("web_url"):
+        raise AcceptanceFailure("storefront profile is missing lab fields")
+    page_url = f"http://127.0.0.1:9010/lab/{entry['lab_slug']}"
+    with urllib.request.urlopen(page_url, timeout=30) as response:
+        page = response.read().decode("utf-8")
+        csp = response.headers.get("Content-Security-Policy", "")
+    if "default-src 'none'" not in csp:
+        raise AcceptanceFailure("lab page CSP is not locked down")
+    if "you are visitor" not in page:
+        raise AcceptanceFailure("lab page did not render the visitor counter")
+
+    minted = admin_request(
+        "/api/admin/lab-edit-links", {"owner_account": owner_account}
+    )
+    edit_token = minted["url"].rsplit("#", 1)[-1]
+    update = urllib.request.Request(
+        "http://127.0.0.1:9010/lab/api/profile",
+        data=json.dumps({"tagline": "<script>alert(1)</script>"}).encode(
+            "utf-8"
+        ),
+        headers={
+            "Authorization": f"Bearer {edit_token}",
+            "Content-Type": "application/json",
+        },
+        method="PUT",
+    )
+    with urllib.request.urlopen(update, timeout=30):
+        pass
+    with urllib.request.urlopen(page_url, timeout=30) as response:
+        page = response.read().decode("utf-8")
+    if "<script>alert" in page:
+        raise AcceptanceFailure("owner text reached the lab page unescaped")
+    if "&lt;script&gt;" not in page:
+        raise AcceptanceFailure("lab page did not render the updated tagline")
+
+    owner.send(f"PRIVMSG {herder_account} :editlab")
+    owner.wait("lab editor link", 20)
+
+
 def create_disposable_member(suffix: str) -> tuple[str, str, str]:
     account = f"Accept{suffix}"
     herder = f"Herder{suffix}"
@@ -221,6 +285,10 @@ def main() -> int:
     owner.login()
     owner.send(f"PRIVMSG {herder_account} :status")
     owner.wait("pending=", 20)
+    lab_acceptance(owner_account, herder_account, owner)
+    print("PASS: storefront lab page rendered with a locked-down CSP")
+    print("PASS: owner edits stayed escaped presentation, not markup")
+    print("PASS: the companion minted a one-hour lab editor link")
     agent_name = f"Probe{suffix}"
     agent_account = f"{owner_account[:14]}-{agent_name[:14]}"[:32]
     container = "omen-agent-acceptance"

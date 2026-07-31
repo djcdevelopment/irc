@@ -1,0 +1,272 @@
+/* Personal AI Storefront — guestbook-era machinery.
+   Per-lab colors arrive as CSS custom properties in a nonce'd style block:
+   --lab-bg, --lab-fg, --lab-accent, --lab-accent2. */
+
+* {
+	box-sizing: border-box;
+}
+
+body.lab {
+	margin: 0;
+	min-height: 100vh;
+	background: var(--lab-bg);
+	color: var(--lab-fg);
+	font-family: "Lucida Console", Monaco, "Courier New", monospace;
+	font-size: 15px;
+	line-height: 1.5;
+}
+
+.crt {
+	max-width: 860px;
+	margin: 0 auto;
+	padding: 0 20px 40px;
+	background:
+		repeating-linear-gradient(
+			0deg,
+			rgba(0, 0, 0, 0.12) 0px,
+			rgba(0, 0, 0, 0.12) 1px,
+			transparent 1px,
+			transparent 3px
+		);
+}
+
+/* ---- marquee ------------------------------------------------------- */
+
+.marquee {
+	overflow: hidden;
+	white-space: nowrap;
+	border-top: 1px solid var(--lab-accent);
+	border-bottom: 1px solid var(--lab-accent);
+	padding: 4px 0;
+	margin-bottom: 18px;
+}
+
+.marquee span {
+	display: inline-block;
+	padding-left: 100%;
+	color: var(--lab-accent);
+	animation: marquee-roll 18s linear infinite;
+}
+
+@keyframes marquee-roll {
+	0% {
+		transform: translateX(0);
+	}
+	100% {
+		transform: translateX(-100%);
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.marquee span {
+		animation: none;
+		padding-left: 0;
+	}
+}
+
+/* ---- header + banner ----------------------------------------------- */
+
+header {
+	text-align: center;
+	padding: 22px 0 4px;
+}
+
+header h1 {
+	margin: 0;
+	font-size: 34px;
+	letter-spacing: 2px;
+	color: var(--lab-accent);
+	text-shadow: 0 0 12px color-mix(in srgb, var(--lab-accent) 55%, transparent);
+}
+
+header .tagline {
+	margin: 6px 0 0;
+	color: var(--lab-accent2);
+	font-style: italic;
+}
+
+pre.banner {
+	overflow-x: auto;
+	text-align: center;
+	color: var(--lab-accent2);
+	margin: 18px 0;
+	font-size: 12px;
+	line-height: 1.15;
+	text-shadow: 0 0 8px color-mix(in srgb, var(--lab-accent2) 45%, transparent);
+}
+
+/* ---- visitor counter ----------------------------------------------- */
+
+.counter {
+	text-align: center;
+	margin: 14px 0 26px;
+	font-size: 13px;
+	opacity: 0.9;
+}
+
+.odometer {
+	display: inline-block;
+	margin: 0 4px;
+}
+
+.odometer .digit {
+	display: inline-block;
+	min-width: 14px;
+	margin: 0 1px;
+	padding: 2px 1px;
+	background: #000;
+	color: var(--lab-accent);
+	border: 1px solid color-mix(in srgb, var(--lab-fg) 35%, transparent);
+	border-radius: 2px;
+	font-weight: bold;
+	transition: transform 120ms ease;
+}
+
+.odometer:hover .digit {
+	transform: translateY(-2px);
+	color: var(--lab-accent2);
+}
+
+/* ---- owner sections ------------------------------------------------- */
+
+section {
+	margin: 0 0 26px;
+	border: 1px dashed color-mix(in srgb, var(--lab-fg) 30%, transparent);
+	padding: 14px 18px;
+}
+
+section h2 {
+	margin: 0 0 10px;
+	font-size: 15px;
+	text-transform: uppercase;
+	letter-spacing: 3px;
+	color: var(--lab-accent);
+}
+
+section h3 {
+	margin: 14px 0 6px;
+	font-size: 13px;
+	letter-spacing: 2px;
+	text-transform: uppercase;
+	color: var(--lab-accent2);
+}
+
+.bio p {
+	margin: 0 0 10px;
+}
+
+.experiments ul {
+	margin: 0;
+	padding-left: 22px;
+}
+
+.experiments li::marker {
+	content: "▸ ";
+	color: var(--lab-accent);
+}
+
+.links nav {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 10px;
+}
+
+.link-tile {
+	display: inline-block;
+	padding: 6px 12px;
+	border: 1px solid var(--lab-accent);
+	color: var(--lab-accent);
+	text-decoration: none;
+}
+
+.link-tile:hover {
+	background: var(--lab-accent);
+	color: var(--lab-bg);
+}
+
+/* ---- HEARTH truth panel --------------------------------------------- */
+
+.truth {
+	border-style: solid;
+	border-color: color-mix(in srgb, var(--lab-accent2) 60%, transparent);
+}
+
+.truth ul {
+	margin: 0;
+	padding-left: 18px;
+	list-style: none;
+}
+
+.truth li {
+	margin: 2px 0;
+}
+
+.truth .name {
+	color: var(--lab-fg);
+	font-weight: bold;
+}
+
+.truth .models,
+.truth .when,
+.truth .kind {
+	opacity: 0.75;
+	font-size: 13px;
+}
+
+.truth .tags {
+	color: var(--lab-accent2);
+	font-size: 13px;
+}
+
+.truth .status {
+	font-size: 12px;
+	padding: 0 6px;
+	border: 1px solid currentColor;
+	border-radius: 8px;
+}
+
+.truth .status-succeeded {
+	color: var(--lab-accent2);
+}
+
+.truth .status-failed,
+.truth .status-cancelled,
+.truth .status-expired {
+	color: #ff6a5e;
+}
+
+.kernel .kv {
+	display: flex;
+	justify-content: space-between;
+	max-width: 380px;
+}
+
+.kernel .k {
+	opacity: 0.75;
+}
+
+.kernel .v {
+	color: var(--lab-accent);
+}
+
+.stale {
+	color: #ff6a5e;
+	font-style: italic;
+}
+
+.stamp {
+	margin: 14px 0 0;
+	font-size: 12px;
+	opacity: 0.65;
+	text-align: right;
+}
+
+/* ---- footer --------------------------------------------------------- */
+
+footer {
+	text-align: center;
+	font-size: 12px;
+	opacity: 0.7;
+	padding-top: 8px;
+	border-top: 1px solid color-mix(in srgb, var(--lab-fg) 25%, transparent);
+}

@@ -11,6 +11,8 @@ function startFakeErgo({accounts = {}, operName, operPassword}) {
 	);
 	const registrations = [];
 	const suspensions = [];
+	const amodes = [];
+	const topics = [];
 	const sockets = new Set();
 	let reachable = true;
 
@@ -110,7 +112,23 @@ function startFakeErgo({accounts = {}, operName, operPassword}) {
 					write(
 						`:ChanServ!services@fake.ergo NOTICE ${nick} :Channel ${request[1] || "#unknown"} successfully registered`
 					);
+				} else if ((request[0] || "").toUpperCase() === "AMODE") {
+					amodes.push({
+						channel: request[1] || "",
+						mode: request[2] || "",
+						account: request[3] || "",
+					});
+					write(
+						`:ChanServ!services@fake.ergo NOTICE ${nick} :Added persistent mode ${request[2] || ""} on ${request[3] || ""}`
+					);
+				} else if ((request[0] || "").toUpperCase() === "TOPIC") {
+					write(
+						`:ChanServ!services@fake.ergo NOTICE ${nick} :Topic updated`
+					);
 				}
+			} else if (command === "TOPIC") {
+				topics.push({channel: head[1] || "", topic: trailing});
+				write(`:${nick}!user@fake TOPIC ${head[1] || "#unknown"} :${trailing}`);
 			} else if (command === "QUIT") {
 				socket.destroy();
 			}
@@ -141,6 +159,8 @@ function startFakeErgo({accounts = {}, operName, operPassword}) {
 				accounts: registry,
 				registrations,
 				suspensions,
+				amodes,
+				topics,
 				setReachable(value) {
 					reachable = value;
 				},

@@ -1,5 +1,7 @@
 import asyncio
+import re
 import tempfile
+import time
 import unittest
 from dataclasses import replace
 from pathlib import Path
@@ -196,11 +198,16 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
         await self._channel("!status")
         await self._channel("!recent")
         await self._channel("!artifacts")
-        self.assertIn("gpt-oss-120b via am4-moe", self.replies[0][1])
-        self.assertIn("hardware=am4-dual-b70", self.replies[1][1])
-        self.assertTrue(any("ledger_events=42" in text for _, text in self.replies))
-        self.assertIn("job=job_1", self.replies[-2][1])
-        self.assertIn("result=art_1", self.replies[-1][1])
+        def plain(text):
+            return re.sub(r"\x03\d{0,2}|[\x02\x0f]", "", text)
+
+        self.assertIn("gpt-oss-120b via am4-moe", plain(self.replies[0][1]))
+        self.assertIn("hardware=am4-dual-b70", plain(self.replies[1][1]))
+        self.assertTrue(
+            any("ledger_events=42" in plain(text) for _, text in self.replies)
+        )
+        self.assertIn("job=job_1", plain(self.replies[-2][1]))
+        self.assertIn("result=art_1", plain(self.replies[-1][1]))
 
     async def test_help_links_to_configured_public_guide(self):
         self.bot.config = replace(
@@ -221,7 +228,7 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
                 ),
                 (
                     "#general",
-                    "Alice: !recent | !artifacts | !browse | !compare <herder> <herder> | "
+                    "Alice: !recent | !artifacts | !guestbook | !browse | !compare <herder> <herder> | "
                     "!whohas <capability>",
                 ),
                 (
@@ -659,3 +666,208 @@ class BotWireBoundaryTests(unittest.IsolatedAsyncioTestCase):
 
         with self.assertRaisesRegex(ValueError, "exceeds 512 bytes"):
             await self.bot._send_raw(accepted + "x")
+
+
+LAB_PROFILE = {
+    "owner_account": "Alice",
+    "display_name": "Alice",
+    "herder_account": "AlicesHerder",
+    "channel": "#lab-neon-basement",
+    "lab_name": "Neon Basement",
+    "lab_slug": "neon-basement",
+    "tagline": "mostly harmless",
+    "web_url": "https://portal.invalid/lab/neon-basement",
+    "irc_accent": 13,
+    "agents": [],
+}
+
+
+class BotStorefrontPresentationTests(unittest.IsolatedAsyncioTestCase):
+    async def asyncSetUp(self):
+        self.temporary = tempfile.TemporaryDirectory()
+        self.bot = BotHerder(
+            app_config(Path(self.temporary.name) / "heartbeat")
+        )
+        self.bot.registered = True
+        self.replies = []
+        self.raw = []
+
+        async def capture(target, text):
+            self.replies.append((target, text))
+            return True
+
+        async def capture_raw(line):
+            self.raw.append(line)
+
+        self.bot._reply = capture
+        self.bot._send_raw = capture_raw
+        self.bot._community_storefronts_cache = (
+            time.monotonic(),
+            [dict(LAB_PROFILE)],
+        )
+
+    async def asyncTearDown(self):
+        await self.bot.model_client.close()
+        self.temporary.cleanup()
+
+    def _join(self, account, channel="#lab-neon-basement"):
+        return IRCMessage(
+            tags={"account": account},
+            prefix=f"{account}!user@host",
+            command="JOIN",
+            params=(channel,),
+        )
+
+    async def test_join_banner_greets_once_and_stays_small(self):
+        await self.bot._handle_message(self._join("Visitor"))
+        self.assertEqual(len(self.replies), 2)
+        self.assertLessEqual(len(self.replies), 3, "banner must fit one burst")
+        first = self.replies[0][1]
+        self.assertIn("Neon Basement", first)
+        self.assertIn("\x0313", first, "owner accent color is applied")
+        self.assertIn("mostly harmless", first)
+        self.assertIn(
+            "web: https://portal.invalid/lab/neon-basement", self.replies[1][1]
+        )
+        await self.bot._handle_message(self._join("Visitor"))
+        self.assertEqual(len(self.replies), 2, "the same account was re-greeted")
+
+    async def test_join_banner_skips_self_agents_and_other_channels(self):
+        await self.bot._handle_message(self._join("AlicesHerder"))
+        self.assertEqual(self.replies, [])
+        self.bot._agents_cache = (
+            time.monotonic(),
+            [{"account": "Alice-scout", "state": "active", "display_name": "scout"}],
+        )
+        await self.bot._handle_message(self._join("Alice-scout"))
+        self.assertEqual(self.replies, [])
+        await self.bot._handle_message(self._join("Visitor", channel="#general"))
+        self.assertEqual(self.replies, [])
+
+    async def test_topic_is_set_only_when_stale(self):
+        desired = (
+            "⚡ Neon Basement — mostly harmless · "
+            "https://portal.invalid/lab/neon-basement"
+        )
+        await self.bot._handle_message(
+            IRCMessage(
+                tags={},
+                prefix="server",
+                command="332",
+                params=("AlicesHerder", "#lab-neon-basement", "old topic"),
+            )
+        )
+        self.assertEqual(self.raw, [f"TOPIC #lab-neon-basement :{desired}"])
+        await self.bot._handle_message(
+            IRCMessage(
+                tags={},
+                prefix="server",
+                command="332",
+                params=("AlicesHerder", "#lab-neon-basement", desired),
+            )
+        )
+        self.assertEqual(len(self.raw), 1, "a current topic was rewritten")
+
+    async def test_about_uses_profile_and_color_toggle(self):
+        await self.bot._handle_privmsg(
+            IRCMessage(
+                tags={"account": "Alice"},
+                prefix="Alice!user@host",
+                command="PRIVMSG",
+                params=("#general", "!about"),
+            )
+        )
+        self.assertIn("\x0313", self.replies[0][1])
+        self.replies.clear()
+        self.bot.config = replace(
+            self.bot.config,
+            storefront=replace(self.bot.config.storefront, color=False),
+        )
+        await self.bot._handle_privmsg(
+            IRCMessage(
+                tags={"account": "Alice"},
+                prefix="Alice!user@host",
+                command="PRIVMSG",
+                params=("#general", "!about"),
+            )
+        )
+        for _, text in self.replies:
+            self.assertFalse(
+                any(ord(character) < 32 for character in text),
+                f"color emitted while disabled: {text!r}",
+            )
+
+    async def test_guestbook_points_to_the_web_lab(self):
+        await self.bot._handle_privmsg(
+            IRCMessage(
+                tags={"account": "Alice"},
+                prefix="Alice!user@host",
+                command="PRIVMSG",
+                params=("#general", "!guestbook"),
+            )
+        )
+        self.assertIn(
+            "https://portal.invalid/lab/neon-basement", self.replies[0][1]
+        )
+
+    async def test_editlab_relays_the_minted_portal_link(self):
+        class FakePortal:
+            async def mint_edit_link(self, owner_account, herder_account):
+                assert owner_account == "Alice"
+                assert herder_account == "AlicesHerder"
+                return {
+                    "url": "https://portal.invalid/lab/edit#token123",
+                    "expires_at": "soon",
+                }
+
+        self.bot.portal = FakePortal()
+        await self.bot._handle_owner_command("Alice", "editlab")
+        self.assertIn(
+            "https://portal.invalid/lab/edit#token123", self.replies[0][1]
+        )
+
+    async def test_trimmed_snapshot_is_capped_and_shaped(self):
+        projection = {
+            "providers": [
+                {
+                    "name": f"provider-{index}",
+                    "models": [f"model-{index}-{item}" for item in range(20)],
+                    "tags": ["x" * 100],
+                    "internal_endpoint": "http://10.0.0.1",
+                }
+                for index in range(30)
+            ],
+            "operations": [
+                {"name": f"op-{index}", "description": "d" * 500}
+                for index in range(40)
+            ],
+            "kernel": {"event_count": 9, "providers": ["a", "b"], "secret": "no"},
+            "executions": [
+                {
+                    "job_id": f"job-{index}",
+                    "operation": "llm.chat",
+                    "status": "succeeded",
+                    "prompt": "never forwarded",
+                    "artifacts": [
+                        {
+                            "artifact_id": f"art-{index}",
+                            "role": "result",
+                            "media_type": "text/plain",
+                        }
+                    ],
+                }
+                for index in range(25)
+            ],
+        }
+        snapshot = self.bot._trimmed_snapshot(projection)
+        self.assertLessEqual(len(snapshot["providers"]), 12)
+        self.assertLessEqual(len(snapshot["operations"]), 16)
+        self.assertLessEqual(len(snapshot["recent"]), 10)
+        self.assertLessEqual(len(snapshot["artifacts"]), 12)
+        self.assertEqual(snapshot["kernel"], {"ledger_events": 9, "gateway_providers": 2})
+        self.assertLessEqual(len(snapshot["providers"][0]["models"]), 8)
+        self.assertLessEqual(len(snapshot["providers"][0]["tags"][0]), 32)
+        self.assertLessEqual(len(snapshot["operations"][0]["description"]), 160)
+        serialized = str(snapshot)
+        self.assertNotIn("internal_endpoint", serialized)
+        self.assertNotIn("never forwarded", serialized)

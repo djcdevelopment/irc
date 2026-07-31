@@ -137,3 +137,35 @@ On 2026-07-31, the local verification completed with:
    ideas.
 4. Consider only the repeated presentation friction for a small prototype
    adjustment, and only when Derek explicitly asks for it.
+
+## Addendum — 2026-07-31: the deferral is resolved, not ignored
+
+The deferral list above gated banners, guestbook-era surfaces, a durable
+storefront schema, and rename semantics on "a concrete observed need" and
+"only when Derek explicitly asks." Both conditions were met on 2026-07-31:
+Derek used the deployed `#herder-derek` prototype in a real session (logged
+as O-001…O-003 in the journal), then delivered an explicit product decision —
+the Personal AI Storefronts design specification plus direct scope choices
+(MVP slice; full migration of user-visible "herder" naming to owner-chosen
+`#lab-<slug>` identities; raw HTML fragments still deferred).
+
+What was built in response: a `storefront_profiles` table in the portal's
+existing SQLite holding **owner-authored presentation state only**; a public
+`/lab/<slug>` page; an IRC-rooted magic-link editor; an mIRC color layer on
+bot-composed lines; join banners and welcome topics; and rename flows.
+
+The boundary this retrospective defended survives intact and is now enforced
+in more places, not fewer:
+
+- HEARTH remains the only source of operational truth. The web page renders a
+  trimmed snapshot pushed by the member's own bot, stamped with its age and
+  displayed as stale or absent when it is — never reconstructed locally.
+- Ergo still owns channel identity; profiles reference channels, they do not
+  replace them.
+- The model/agent output path still strips every control character; color is
+  applied only to lines the bot composes itself. The prototype's
+  anti-spoofing stance is unchanged.
+- One prototype bug was found and fixed during generalization: member bots
+  inherited the primary `[storefront]` table and joined `#herder-derek`
+  (supervisor `_member_config`), which the per-member storefront override and
+  a regression test now prevent.

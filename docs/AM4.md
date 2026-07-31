@@ -43,7 +43,9 @@ https://am4.tail8e749c.ts.net:10000/
 The one-time portal is bound to `127.0.0.1:9010` and additively published at
 `https://am4.tail8e749c.ts.net/join/`. AM4's gallery remains at `/`.
 The same loopback portal serves the static member guide at
-`https://am4.tail8e749c.ts.net/guide/`.
+`https://am4.tail8e749c.ts.net/guide/` and the Personal AI Storefront lab
+pages and editor at `https://am4.tail8e749c.ts.net/lab/<slug>` and
+`/lab/edit`.
 
 BotHerder uses host networking so it can reach both
 `127.0.0.1:6667` (the loopback-only Ergo publication) and the existing
@@ -129,11 +131,13 @@ sudo tailscale funnel --bg --yes --set-path=/join \
   http://127.0.0.1:9010
 sudo tailscale funnel --bg --yes --set-path=/guide \
   http://127.0.0.1:9010/guide
+sudo tailscale funnel --bg --yes --set-path=/lab \
+  http://127.0.0.1:9010/lab
 ```
 
-The `/guide` target deliberately includes the backend path. Funnel removes the
-public mount prefix before proxying; without the target suffix, the portal
-would serve its invitation document at both public paths.
+The `/guide` and `/lab` targets deliberately include the backend path. Funnel
+removes the public mount prefix before proxying; without the target suffix,
+the portal would serve its invitation document at every public path.
 
 ## Service management
 

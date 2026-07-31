@@ -14,6 +14,7 @@ const elements = Object.fromEntries(
 		"agent-success",
 		"account",
 		"herder-account",
+		"lab-name",
 		"display-name",
 		"agent-name",
 		"agent-owner",
@@ -22,6 +23,8 @@ const elements = Object.fromEntries(
 		"member-account",
 		"member-password",
 		"member-herder",
+		"member-lab",
+		"member-lab-url",
 		"open-lobby",
 		"first-command",
 		"quassel-host",
@@ -81,7 +84,7 @@ async function api(path, body) {
 
 function suggestedHerder(account) {
 	const cleaned = account.replace(/[^A-Za-z0-9]/g, "");
-	return `${cleaned || "My"}sBotHerder`.slice(0, 32);
+	return `${cleaned || "My"}sBot`.slice(0, 32);
 }
 
 function applyLockedNames(locked) {
@@ -116,6 +119,9 @@ function finishMember(result) {
 	elements.memberAccount.textContent = result.account;
 	elements.memberPassword.textContent = result.password;
 	elements.memberHerder.textContent = result.herder_account;
+	elements.memberLab.textContent = result.channels[result.channels.length - 1];
+	elements.memberLabUrl.textContent = result.web_url || "";
+	elements.memberLabUrl.href = result.web_url || "#";
 	elements.openLobby.href = result.lounge_url;
 	elements.firstCommand.textContent = `${result.herder_account}: ask gpt-oss-120b say hello in one sentence`;
 	elements.quasselHost.textContent = result.irc_host;
@@ -227,6 +233,7 @@ elements.memberForm.addEventListener("submit", async (event) => {
 			token,
 			account: elements.account.value,
 			herder_account: elements.herderAccount.value,
+			lab_name: elements.labName.value,
 			display_name: elements.displayName.value,
 		});
 		finishMember(result);

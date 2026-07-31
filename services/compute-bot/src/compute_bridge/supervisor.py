@@ -8,7 +8,7 @@ from dataclasses import replace
 from pathlib import Path
 
 from .bot import BotHerder
-from .config import AppConfig
+from .config import AppConfig, StorefrontConfig
 from .metrics import MetricsStore
 from .portal import CommunityPortalClient
 
@@ -179,7 +179,28 @@ class HerderSupervisor:
             self.base_config.health,
             heartbeat_path=f"/tmp/bot-herder-{account.casefold()}",
         )
-        return replace(self.base_config, irc=irc, health=health)
+        # The primary's [storefront] table is its own identity, never a
+        # member's: without this override every member bot would join the
+        # primary storefront channel and answer !about with its owner text.
+        # A member's storefront identity comes from the community portal
+        # profile; an optional storefront_channel field remains honored.
+        storefront_channel = value.get("storefront_channel", "")
+        if not isinstance(storefront_channel, str) or (
+            storefront_channel
+            and (
+                not storefront_channel.startswith("#")
+                or any(char in storefront_channel for char in "\r\n\0 ,:")
+            )
+        ):
+            raise ValueError("invalid member storefront channel")
+        storefront = StorefrontConfig(
+            channel=storefront_channel,
+            about="",
+            color=self.base_config.storefront.color,
+        )
+        return replace(
+            self.base_config, irc=irc, health=health, storefront=storefront
+        )
 
     @staticmethod
     def _account(value: object, field: str) -> str:

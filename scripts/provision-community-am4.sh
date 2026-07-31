@@ -110,6 +110,7 @@ fixed = {
     "COMMUNITY_IRC_PORT": "6667",
     "COMMUNITY_REGISTRAR_ACCOUNT": "CommunityRegistrar",
     "COMMUNITY_REGISTRAR_OPER_NAME": "community-registrar",
+    "COMMUNITY_PRIMARY_HERDER": "DereksBotHerder",
 }
 values.update(fixed)
 
@@ -124,6 +125,7 @@ ordered = [
     "COMMUNITY_REGISTRAR_PASSWORD",
     "COMMUNITY_REGISTRAR_OPER_NAME",
     "COMMUNITY_REGISTRAR_OPER_PASSWORD",
+    "COMMUNITY_PRIMARY_HERDER",
     "COMMUNITY_ADMIN_TOKEN",
     "COMMUNITY_INTERNAL_TOKEN",
     "COMMUNITY_CREDENTIAL_KEY",
@@ -362,6 +364,7 @@ storefront_setup="$(
         "CAP END" \
         "JOIN #herder-derek" \
         "PRIVMSG ChanServ :REGISTER #herder-derek" \
+        "PRIVMSG ChanServ :AMODE #herder-derek +o DereksBotHerder" \
         "PRIVMSG ChanServ :INFO #herder-derek" \
         "QUIT :Storefront registration complete"
 )"
@@ -419,6 +422,40 @@ PY
         --data-binary @- \
         http://127.0.0.1:9010/api/admin/members >/dev/null
 
+step "Granting storefront channel operator to member Herders"
+# One-shot repair: channels provisioned before the AMODE grant existed leave
+# their Herder unable to keep the storefront topic current. Idempotent; the
+# grant is a no-op when it is already present.
+registrar_sasl="$(printf '\0%s\0%s' "CommunityRegistrar" "$registrar_password" | base64 -w0)"
+for member_file in /var/lib/omen-irc/bot-herder/members/*.json; do
+    [[ -e "$member_file" ]] || continue
+    member_amode="$(python3 - "$member_file" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as handle:
+    member = json.load(handle)
+channel = member.get("storefront_channel") or (
+    member["channels"][-1] if len(member.get("channels", [])) > 2 else ""
+)
+if channel and channel.lower() not in {"#general", "#ops"}:
+    print(f"{channel} {member['account']}")
+PY
+)"
+    [[ -n "$member_amode" ]] || continue
+    irc_session 0.45 \
+        "CAP LS 302" \
+        "NICK CommunityRegistrar" \
+        "USER registrar 0 * :Storefront operator repair" \
+        "CAP REQ :sasl" \
+        "AUTHENTICATE PLAIN" \
+        "AUTHENTICATE $registrar_sasl" \
+        "CAP END" \
+        "PRIVMSG ChanServ :AMODE ${member_amode% *} +o ${member_amode#* }" \
+        "QUIT :Storefront operator repair complete" >/dev/null ||
+        printf 'Note: AMODE grant unconfirmed for %s\n' "$member_amode"
+done
+
 step "Publishing the browser lobby, join path, and member guide"
 tailscale funnel --bg --yes --https=10000 http://127.0.0.1:9000 >/dev/null
 tailscale funnel --bg --yes --set-path=/join http://127.0.0.1:9010 >/dev/null
@@ -426,6 +463,9 @@ tailscale funnel --bg --yes --set-path=/join http://127.0.0.1:9010 >/dev/null
 # not fall through to the invitation document served at the portal root.
 tailscale funnel --bg --yes --set-path=/guide \
     http://127.0.0.1:9010/guide >/dev/null
+# Personal AI Storefronts: /lab/<slug> pages, same backend-path pin.
+tailscale funnel --bg --yes --set-path=/lab \
+    http://127.0.0.1:9010/lab >/dev/null
 
 old_container="$(
     docker ps -aq --filter 'label=com.docker.compose.project=omen-irc-am4' \

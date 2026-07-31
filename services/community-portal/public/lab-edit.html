@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dress your lab — Omen IRC</title>
+<link rel="stylesheet" href="/lab/lab-edit.css">
+</head>
+<body>
+<main class="editor">
+	<h1>Dress your lab</h1>
+	<p class="hint" id="gate">
+		Open this page from the one-hour link your companion sent you
+		(<code>!editlab</code> in a private message). Operational facts —
+		hardware, models, jobs — always come from HEARTH and cannot be edited.
+	</p>
+	<form id="editor-form" hidden>
+		<section>
+			<h2>Identity</h2>
+			<label>Lab name
+				<input id="lab_name" maxlength="48" required>
+			</label>
+			<label>Tagline
+				<input id="tagline" maxlength="120"
+					placeholder="mostly harmless experiments">
+			</label>
+			<label>Marquee (scrolls across the top; leave empty for none)
+				<input id="marquee" maxlength="160"
+					placeholder="*** welcome to the lab *** all visitors get a free electron ***">
+			</label>
+		</section>
+		<section>
+			<h2>About</h2>
+			<label>Biography
+				<textarea id="bio" rows="6" maxlength="2000"></textarea>
+			</label>
+			<label>Current experiments (one per line, up to 8)
+				<textarea id="experiments" rows="4"></textarea>
+			</label>
+			<label>Links (one per line: label | https://example.com, up to 8)
+				<textarea id="links" rows="4"></textarea>
+			</label>
+		</section>
+		<section>
+			<h2>ASCII banner</h2>
+			<label>Up to 24 lines × 80 columns
+				<textarea id="ascii_banner" rows="8" cols="82" spellcheck="false"
+					class="mono"></textarea>
+			</label>
+		</section>
+		<section>
+			<h2>Theme</h2>
+			<div class="swatches">
+				<label>Background <input type="color" id="theme_bg"></label>
+				<label>Text <input type="color" id="theme_fg"></label>
+				<label>Accent <input type="color" id="theme_accent"></label>
+				<label>Second accent <input type="color" id="theme_accent2"></label>
+			</div>
+			<label>IRC accent color (used by your companion in the channel)
+				<select id="irc_accent"></select>
+			</label>
+			<div class="preview" id="preview">
+				<span class="preview-name" id="preview-name">Lab name</span>
+				<span class="preview-tagline" id="preview-tagline">tagline</span>
+			</div>
+		</section>
+		<div class="actions">
+			<button type="submit">Save</button>
+			<a id="view-link" target="_blank" rel="noopener">View your lab page</a>
+		</div>
+		<section>
+			<h2>Moving day</h2>
+			<label>Lab address — channel <code>#lab-&lt;slug&gt;</code> and page <code>/lab/&lt;slug&gt;</code>
+				<input id="rename-slug" maxlength="31" spellcheck="false"
+					placeholder="neon-basement">
+			</label>
+			<p class="hint">Your old channel stays registered with a forwarding
+				topic, so nobody gets lost.</p>
+			<button type="button" id="rename-channel">Move my channel</button>
+			<label>Companion name
+				<input id="rename-companion-name" maxlength="32" spellcheck="false">
+			</label>
+			<p class="hint">⚠ Renaming your companion breaks any deployed remote
+				agents until you update <code>HERDER_ACCOUNT</code> in each
+				<code>agent.env</code> and restart them.</p>
+			<button type="button" id="rename-companion">Rename my companion</button>
+		</section>
+		<p class="status" id="status" role="status"></p>
+	</form>
+</main>
+<script src="/lab/lab-edit.js"></script>
+</body>
+</html>

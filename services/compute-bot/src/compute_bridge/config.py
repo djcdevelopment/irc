@@ -71,6 +71,7 @@ class HearthConfig:
 class StorefrontConfig:
     channel: str = ""
     about: str = ""
+    color: bool = True
 
 
 @dataclass(frozen=True)
@@ -388,7 +389,10 @@ def _load_storefront(raw: dict) -> StorefrontConfig:
         raise ConfigError("storefront.about contains a forbidden control character")
     if len(about.encode("utf-8")) > 1000:
         raise ConfigError("storefront.about is too long")
-    return StorefrontConfig(channel=channel, about=about.strip())
+    color = table.get("color", True)
+    if not isinstance(color, bool):
+        raise ConfigError("storefront.color must be true or false")
+    return StorefrontConfig(channel=channel, about=about.strip(), color=color)
 
 
 def _load_models(
