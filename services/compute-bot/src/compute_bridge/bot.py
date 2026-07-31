@@ -305,22 +305,27 @@ class BotHerder:
 
         if not target.startswith("#"):
             return
+        is_owner = account.casefold() == self.config.irc.owner_account.casefold()
         addressed = self._addressed_command(text)
-        if addressed is None:
-            return
-        if (
-            self.config.irc.access_mode == "owner"
-            and account.casefold() != self.config.irc.owner_account.casefold()
-        ):
-            return
+        if addressed is not None:
+            if self.config.irc.access_mode == "owner" and not is_owner:
+                return
+        else:
+            # A bare "!command" is answered only by the sender's own Herder.
+            # With one Herder per member in a shared channel, owner-match is the
+            # only thing that stops every Herder answering the same line, so it
+            # holds regardless of access_mode.
+            addressed = self._bare_command(text)
+            if addressed is None or not is_owner:
+                return
 
         command, _, rest = addressed.partition(" ")
         command = command.casefold().lstrip("!")
         if command == "help":
             await self._reply(
                 target,
-                f"{nick}: {self.config.irc.nick}: models | ask <model-or-agent> "
-                "<prompt> | status",
+                f"{nick}: !ask <prompt> | !ask <model-or-agent> <prompt> | "
+                "!models | !status",
             )
         elif command == "models":
             await self._list_models(target, nick)
@@ -328,6 +333,32 @@ class BotHerder:
             await self._start_request(target, nick, account, rest)
         elif command == "status":
             await self._status(target, nick)
+
+    def _default_model(self) -> ModelConfig | None:
+        """The model used when the caller names no provider. An explicit
+        default wins; otherwise a single-entry registry is unambiguous."""
+        configured = self.config.irc.default_model
+        if configured:
+            return self.config.models.get(configured.casefold())
+        if len(self.config.models) == 1:
+            return next(iter(self.config.models.values()))
+        return None
+
+    async def _find_agent(self, name: str) -> dict | None:
+        try:
+            agents = await self._get_agents()
+        except PortalError:
+            return None
+        return next(
+            (
+                item
+                for item in agents
+                if item["state"] == "active"
+                and name.casefold()
+                in {item["account"].casefold(), item["display_name"].casefold()}
+            ),
+            None,
+        )
 
     def _addressed_command(self, text: str) -> str | None:
         clean = text.strip()
@@ -337,6 +368,15 @@ class BotHerder:
             if clean[: len(prefix)].casefold() == prefix.casefold():
                 return clean[len(prefix) :].strip()
         return None
+
+    @staticmethod
+    def _bare_command(text: str) -> str | None:
+        clean = text.strip()
+        if len(clean) < 2 or clean[0] != "!" or not clean[1].isascii():
+            return None
+        if not clean[1].isalpha():
+            return None
+        return clean[1:]
 
     async def _handle_owner_command(self, nick: str, text: str) -> None:
         command, _, rest = text.partition(" ")
@@ -488,16 +528,37 @@ class BotHerder:
     async def _start_request(
         self, target: str, nick: str, account: str, arguments: str
     ) -> None:
-        provider_name, separator, prompt = arguments.strip().partition(" ")
-        if not separator or not provider_name or not prompt.strip():
+        text = arguments.strip()
+        if not text:
             await self._reply(
                 target,
-                f"{nick}: usage: {self.config.irc.nick}: ask "
-                "<model-or-agent> <prompt>",
+                f"{nick}: usage: !ask <prompt>   or   "
+                "!ask <model-or-agent> <prompt>",
             )
             return
 
-        prompt = prompt.strip()
+        first, _, remainder = text.partition(" ")
+        remainder = remainder.strip()
+        model = self.config.models.get(first.casefold())
+        agent = None
+        if model is None and remainder:
+            agent = await self._find_agent(first)
+
+        if remainder and (model is not None or agent is not None):
+            prompt = remainder
+        else:
+            # No provider was named, so the whole line is the question. The ack
+            # names the provider that was chosen, which is also how a mistyped
+            # agent name stays visible instead of silently answering as a model.
+            model = self._default_model()
+            agent = None
+            prompt = text
+            if model is None:
+                await self._reply(
+                    target, f"{nick}: no model is configured; ask an operator"
+                )
+                return
+
         if len(prompt.encode("utf-8")) > self.config.limits.max_prompt_bytes:
             await self._reply(
                 target,
@@ -505,34 +566,6 @@ class BotHerder:
                 f"{self.config.limits.max_prompt_bytes}-byte limit",
             )
             return
-
-        model = self.config.models.get(provider_name.casefold())
-        agent = None
-        if model is None:
-            try:
-                agents = await self._get_agents()
-            except PortalError:
-                agents = []
-            agent = next(
-                (
-                    item
-                    for item in agents
-                    if item["state"] == "active"
-                    and provider_name.casefold()
-                    in {
-                        item["account"].casefold(),
-                        item["display_name"].casefold(),
-                    }
-                ),
-                None,
-            )
-            if agent is None:
-                await self._reply(
-                    target,
-                    f"{nick}: unknown model or agent {provider_name!r}; "
-                    f"ask {self.config.irc.nick} for models",
-                )
-                return
 
         # Capacity is consumed only once the request is known to be dispatchable,
         # so a mistyped model name does not cost the caller a slot.
@@ -563,7 +596,9 @@ class BotHerder:
     ) -> None:
         request_id = uuid.uuid4().hex[:12]
         self.pending_count += 1
-        await self._reply(target, f"{nick}: working... (req {request_id})")
+        await self._reply(
+            target, f"{nick}: working... (req {request_id} via {model.name})"
+        )
         task = asyncio.create_task(
             self._run_local_request(request_id, target, nick, account, model, prompt)
         )
@@ -688,7 +723,10 @@ class BotHerder:
                 account,
                 f"agent:{agent['account']}",
             )
-        await self._reply(target, f"{nick}: working... (req {request_id})")
+        await self._reply(
+            target,
+            f"{nick}: working... (req {request_id} via {agent['display_name']})",
+        )
         encoded = base64.urlsafe_b64encode(prompt.encode("utf-8")).decode("ascii")
         pieces = [encoded[index : index + 260] for index in range(0, len(encoded), 260)]
         try:
