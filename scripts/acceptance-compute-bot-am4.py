@@ -7,6 +7,7 @@ import argparse
 import base64
 import json
 import os
+import re
 import shutil
 import socket
 import subprocess
@@ -25,7 +26,21 @@ BOT_ENV_FILE = Path(
     os.environ.get("OMEN_IRC_CONFIG_DIR", "/etc/omen-irc")
 ) / "compute-bot.env"
 ACCEPTANCE_CHANNEL = "#bot-collab-test"
-BOT_NICK = "DereksBotHerder"
+
+
+def configured_bot_nick() -> str:
+    """The primary companion's nick from the deployed bot configuration."""
+    try:
+        text = (PROJECT_DIR / "config" / "compute-bot" / "bot.toml").read_text(
+            encoding="utf-8"
+        )
+    except OSError:
+        return "DereksBotHerder"
+    match = re.search(r'^nick\s*=\s*"([^"]+)"', text, re.MULTILINE)
+    return match.group(1) if match else "DereksBotHerder"
+
+
+BOT_NICK = configured_bot_nick()
 
 
 class AcceptanceFailure(RuntimeError):

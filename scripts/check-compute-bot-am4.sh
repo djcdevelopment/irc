@@ -121,10 +121,16 @@ unauthorized_status="$(
     fail "Model endpoint does not enforce bearer authentication"
 pass "Model chat endpoint rejects unauthenticated requests"
 
+primary_nick="$(
+    sed -n 's/^account *= *"\([^"]*\)".*/\1/p' \
+        "$project_dir/config/compute-bot/bot.toml" | head -n 1
+)"
+primary_nick="${primary_nick:-DereksBotHerder}"
+
 logs="$("${compose[@]}" -f "$compose_file" logs --no-color bot-herder)"
-grep -q 'irc_registered account=DereksBotHerder' <<<"$logs" ||
-    fail "DereksBotHerder has no sanitized IRC registration event"
-pass "DereksBotHerder SASL-registered with Ergo"
+grep -q "irc_registered account=$primary_nick" <<<"$logs" ||
+    fail "$primary_nick has no sanitized IRC registration event"
+pass "$primary_nick SASL-registered with Ergo"
 
 if ! python3 - "$bot_env_file" "$community_env_file" "$herder_env_file" \
     "$hearth_env_file" \
@@ -194,8 +200,8 @@ membership="$(
 )"
 grep -q ' 903 ' <<<"$membership" ||
     fail "Admin SASL probe failed"
-grep -qi 'DereksBotHerder' <<<"$membership" ||
-    fail "DereksBotHerder is not visible in #general"
-pass "DereksBotHerder appears in #general"
+grep -qi "$primary_nick" <<<"$membership" ||
+    fail "$primary_nick is not visible in #general"
+pass "$primary_nick appears in #general"
 
 printf '\n%d BotHerder checks passed.\n' "$pass_count"

@@ -13,6 +13,7 @@ support = runpy.run_path(
 IRCClient = support["IRCClient"]
 credentials = support["credentials"]
 print_transcript = support["print_transcript"]
+BOT_NICK = support["BOT_NICK"]
 
 
 def main() -> int:
@@ -21,13 +22,13 @@ def main() -> int:
     try:
         client.login()
         client.send(
-            "PRIVMSG #bot-collab-test :DereksBotHerder: status"
+            f"PRIVMSG #bot-collab-test :{BOT_NICK}: status"
         )
         status, _ = client.wait_for_bot("execution=hearth")
         print_transcript("provenance-status", status)
 
         client.send(
-            "PRIVMSG #bot-collab-test :DereksBotHerder: ask "
+            f"PRIVMSG #bot-collab-test :{BOT_NICK}: ask "
             "are you using HEARTH now, or the direct model endpoint?"
         )
         acknowledgement, _ = client.wait_for_bot("working")

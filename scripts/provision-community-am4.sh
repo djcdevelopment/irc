@@ -110,9 +110,11 @@ fixed = {
     "COMMUNITY_IRC_PORT": "6667",
     "COMMUNITY_REGISTRAR_ACCOUNT": "CommunityRegistrar",
     "COMMUNITY_REGISTRAR_OPER_NAME": "community-registrar",
-    "COMMUNITY_PRIMARY_HERDER": "DereksBotHerder",
 }
 values.update(fixed)
+# The primary companion may be renamed by the operator; preserve an existing
+# value instead of forcing the historical default back.
+values.setdefault("COMMUNITY_PRIMARY_HERDER", "DereksBotHerder")
 
 ordered = [
     "COMMUNITY_PUBLIC_BASE",
@@ -348,8 +350,13 @@ register_account() {
     fi
 }
 
+primary_herder="$(
+    sed -n 's/^COMMUNITY_PRIMARY_HERDER=//p' "$community_env_file"
+)"
+primary_herder="${primary_herder:-DereksBotHerder}"
+
 register_account "CommunityRegistrar" "$registrar_password"
-register_account "DereksBotHerder" "$herder_password"
+register_account "$primary_herder" "$herder_password"
 
 step "Registering Derek's storefront channel"
 sasl_plain="$(printf '\0%s\0%s' "$admin_account" "$admin_password" | base64 -w0)"
@@ -364,7 +371,7 @@ storefront_setup="$(
         "CAP END" \
         "JOIN #herder-derek" \
         "PRIVMSG ChanServ :REGISTER #herder-derek" \
-        "PRIVMSG ChanServ :AMODE #herder-derek +o DereksBotHerder" \
+        "PRIVMSG ChanServ :AMODE #herder-derek +o $primary_herder" \
         "PRIVMSG ChanServ :INFO #herder-derek" \
         "QUIT :Storefront registration complete"
 )"
@@ -403,8 +410,9 @@ fi
 
 step "Registering Derek's migrated BotHerder ownership"
 admin_token="$(sed -n 's/^COMMUNITY_ADMIN_TOKEN=//p' "$community_env_file")"
-python3 - "$bootstrap_file" <<'PY' |
+PRIMARY_HERDER="$primary_herder" python3 - "$bootstrap_file" <<'PY' |
 import json
+import os
 import sys
 
 with open(sys.argv[1], encoding="utf-8") as handle:
@@ -412,7 +420,7 @@ with open(sys.argv[1], encoding="utf-8") as handle:
 print(json.dumps({
     "owner_account": bootstrap["AdminAccount"],
     "account_password": bootstrap["AdminPassword"],
-    "herder_account": "DereksBotHerder",
+    "herder_account": os.environ["PRIMARY_HERDER"],
     "display_name": "Derek",
 }))
 PY
@@ -455,6 +463,41 @@ PY
         "QUIT :Storefront operator repair complete" >/dev/null ||
         printf 'Note: AMODE grant unconfirmed for %s\n' "$member_amode"
 done
+
+# The primary companion has no member file; its storefront channel comes from
+# the portal profile. Grant it channel operator there too (idempotent, and a
+# no-op while the profile still points at the legacy admin-founded channel).
+internal_token="$(sed -n 's/^COMMUNITY_INTERNAL_TOKEN=//p' "$community_env_file")"
+primary_channel="$(
+    curl --silent --max-time 10 \
+        --header "Authorization: Bearer $internal_token" \
+        http://127.0.0.1:9010/api/internal/storefronts |
+        PRIMARY_HERDER="$primary_herder" python3 -c '
+import json
+import os
+import sys
+
+primary = os.environ["PRIMARY_HERDER"].casefold()
+for entry in json.load(sys.stdin).get("storefronts", []):
+    if str(entry.get("herder_account", "")).casefold() == primary:
+        print(entry.get("channel", ""))
+        break
+' || true
+)"
+if [[ -n "$primary_channel" ]]; then
+    irc_session 0.45 \
+        "CAP LS 302" \
+        "NICK CommunityRegistrar" \
+        "USER registrar 0 * :Storefront operator repair" \
+        "CAP REQ :sasl" \
+        "AUTHENTICATE PLAIN" \
+        "AUTHENTICATE $registrar_sasl" \
+        "CAP END" \
+        "PRIVMSG ChanServ :AMODE $primary_channel +o $primary_herder" \
+        "QUIT :Storefront operator repair complete" >/dev/null ||
+        printf 'Note: AMODE grant unconfirmed for %s %s\n' \
+            "$primary_channel" "$primary_herder"
+fi
 
 step "Publishing the browser lobby, join path, and member guide"
 tailscale funnel --bg --yes --https=10000 http://127.0.0.1:9000 >/dev/null
@@ -499,6 +542,6 @@ printf '\nCommunity onboarding is ready.\n'
 printf 'Browser lobby: https://%s:10000/\n' "$tailscale_hostname"
 printf 'Join portal: https://%s/join/\n' "$tailscale_hostname"
 printf 'BotHerder guide: https://%s/guide/\n' "$tailscale_hostname"
-printf 'Primary BotHerder: DereksBotHerder (owner: admin)\n'
+printf 'Primary BotHerder: %s (owner: admin)\n' "$primary_herder"
 printf 'Secrets remain in %s, %s, and %s (root-only).\n' \
     "$bot_env_file" "$community_env_file" "$herder_env_file"

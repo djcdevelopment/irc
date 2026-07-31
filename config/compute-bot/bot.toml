@@ -1,8 +1,8 @@
 [irc]
 server = "127.0.0.1"
 port = 6667
-nick = "DereksBotHerder"
-account = "DereksBotHerder"
+nick = "HEARTH"
+account = "HEARTH"
 password_env = "IRC_BOT_PASSWORD"
 owner_account = "admin"
 # Any authenticated account may address this Herder by nick. A bare "!command"
@@ -16,10 +16,10 @@ reconnect_initial_seconds = 2
 reconnect_max_seconds = 60
 
 [storefront]
-# First live storefront pilot. Keep the public introduction small; operational
-# inventory is projected from HEARTH and the attached-agent registry.
-channel = "#herder-derek"
-about = "Derek's BotHerder — AI systems, local inference, research, and practical tooling."
+# Derek's lab. Keep the public introduction small; operational inventory is
+# projected from HEARTH and the attached-agent registry.
+channel = "#lab-derek"
+about = "HEARTH — Derek's companion. AI systems, local inference, research, and practical tooling."
 # mIRC color on bot-composed storefront lines. Model output is never colored;
 # the control-character strip on completions stays regardless of this toggle.
 color = true
