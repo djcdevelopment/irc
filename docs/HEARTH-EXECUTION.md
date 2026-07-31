@@ -151,3 +151,9 @@ Verify:
 6. `tailscale serve status` shows the OMEN 8443 route as private Serve, not
    Funnel.
 7. Switching to `direct` and back is one config change plus container recreate.
+
+The focused live probe is:
+
+```bash
+sudo python3 /opt/omen-irc/scripts/acceptance-hearth-provenance-am4.py
+```

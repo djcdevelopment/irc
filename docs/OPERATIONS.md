@@ -47,6 +47,7 @@ Run its live acceptance suite:
 
 ```bash
 sudo python3 /opt/omen-irc/scripts/acceptance-compute-bot-am4.py
+sudo python3 /opt/omen-irc/scripts/acceptance-hearth-provenance-am4.py
 ```
 
 BotHerder execution is controlled by `[hearth].mode` in

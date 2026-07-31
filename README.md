@@ -156,6 +156,7 @@ On AM4:
 sudo /opt/omen-irc/scripts/check-am4.sh --require-funnel
 sudo /opt/omen-irc/scripts/check-am4.sh --require-funnel --persistence
 sudo python3 /opt/omen-irc/scripts/acceptance-compute-bot-am4.py
+sudo python3 /opt/omen-irc/scripts/acceptance-hearth-provenance-am4.py
 sudo python3 /opt/omen-irc/scripts/acceptance-community-am4.py
 sudo systemctl status omen-irc-am4
 ```
