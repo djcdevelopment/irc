@@ -1021,20 +1021,24 @@ class IRCSession {
 		if (!/^#[^\x00\x07\r\n ,:]{1,63}$/.test(channel)) {
 			throw new Error("invalid storefront channel");
 		}
+		// Ergo persistence can leave the registrar resident in a channel it
+		// touched before, and a repeated JOIN is then acknowledged with
+		// nothing at all — so nothing waits on the JOIN echo. ChanServ's
+		// REGISTER reply is the gate; TCP ordering lands the join first.
 		this.send(`JOIN ${channel}`);
-		await this.waitFor(
-			(value) =>
-				(value.includes(" JOIN ") && value.includes(channel)) ||
-				(value.includes(" 403 ") && value.includes(channel))
-		);
 		this.send(`PRIVMSG ChanServ :REGISTER ${channel}`);
 		const line = await this.waitFor(
 			(value) =>
 				value.includes("ChanServ") &&
-				/(successfully registered|already registered|already exists|registered)/i.test(value)
+				/(successfully registered|already registered|already exists|registered|must be an oper on the channel)/i.test(
+					value
+				)
 		);
-		if (!/successfully registered|already registered|already exists|registered/i.test(line)) {
-			throw new Error("Ergo rejected the storefront channel registration");
+		if (/must be an oper on the channel/i.test(line)) {
+			// The channel is already registered, typically to its owner (the
+			// administrator's own storefront). Managing it is not this
+			// registrar's job; its existence is all provisioning needs.
+			return "registered";
 		}
 		if (herderAccount) {
 			// Channel-operator status lets the Herder keep the storefront
@@ -1047,7 +1051,9 @@ class IRCSession {
 				await this.waitFor(
 					(value) =>
 						value.includes("ChanServ") &&
-						/(amode|persistent mode|already|not authorized)/i.test(value),
+						/(amode|persistent mode|already|not authorized|insufficient)/i.test(
+							value
+						),
 					5_000
 				);
 			} catch {
@@ -2275,7 +2281,9 @@ const server = http.createServer((request, response) => {
 		const code = error.code || (status === 500 ? "internal_error" : "request_failed");
 		if (status >= 500) {
 			console.error(
-				`portal_request_failed path=${normalizePath(request.url || "/").pathname} error_type=${error.constructor.name}`
+				`portal_request_failed path=${normalizePath(request.url || "/").pathname} ` +
+					`error_type=${error.constructor.name} ` +
+					`message=${JSON.stringify(String(error.message))}`
 			);
 		}
 		const payload = {

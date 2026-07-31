@@ -13,6 +13,7 @@ function startFakeErgo({accounts = {}, operName, operPassword}) {
 	const suspensions = [];
 	const amodes = [];
 	const topics = [];
+	const channels = new Set();
 	const sockets = new Set();
 	let reachable = true;
 
@@ -109,9 +110,17 @@ function startFakeErgo({accounts = {}, operName, operPassword}) {
 			) {
 				const request = trailing.split(" ").filter(Boolean);
 				if ((request[0] || "").toUpperCase() === "REGISTER") {
-					write(
-						`:ChanServ!services@fake.ergo NOTICE ${nick} :Channel ${request[1] || "#unknown"} successfully registered`
-					);
+					const channel = (request[1] || "#unknown").toLowerCase();
+					if (channels.has(channel)) {
+						write(
+							`:ChanServ!services@fake.ergo NOTICE ${nick} :Channel ${request[1]} is already registered`
+						);
+					} else {
+						channels.add(channel);
+						write(
+							`:ChanServ!services@fake.ergo NOTICE ${nick} :Channel ${request[1] || "#unknown"} successfully registered`
+						);
+					}
 				} else if ((request[0] || "").toUpperCase() === "AMODE") {
 					amodes.push({
 						channel: request[1] || "",
