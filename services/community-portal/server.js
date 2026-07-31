@@ -674,7 +674,7 @@ function labSecurityHeaders(response, nonce) {
 function serveLabGallery(response) {
 	const profiles = database
 		.prepare(
-			`SELECT lab_name, lab_slug, tagline, channel, visitors, created_at
+			`SELECT lab_name, lab_slug, tagline, channel, visitors, theme, created_at
 			 FROM storefront_profiles ORDER BY lab_name COLLATE NOCASE`
 		)
 		.all();

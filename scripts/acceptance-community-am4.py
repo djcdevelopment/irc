@@ -212,25 +212,33 @@ def lab_acceptance(
         "/api/admin/lab-edit-links", {"owner_account": owner_account}
     )
     edit_token = minted["url"].rsplit("#", 1)[-1]
-    update = urllib.request.Request(
-        "http://127.0.0.1:9010/lab/api/profile",
-        data=json.dumps({"tagline": "<script>alert(1)</script>"}).encode(
-            "utf-8"
-        ),
-        headers={
-            "Authorization": f"Bearer {edit_token}",
-            "Content-Type": "application/json",
-        },
-        method="PUT",
-    )
-    with urllib.request.urlopen(update, timeout=30):
-        pass
-    with urllib.request.urlopen(page_url, timeout=30) as response:
-        page = response.read().decode("utf-8")
-    if "<script>alert" in page:
-        raise AcceptanceFailure("owner text reached the lab page unescaped")
-    if "&lt;script&gt;" not in page:
-        raise AcceptanceFailure("lab page did not render the updated tagline")
+
+    def profile_request(method, payload=None):
+        request = urllib.request.Request(
+            "http://127.0.0.1:9010/lab/api/profile",
+            data=json.dumps(payload).encode("utf-8") if payload else None,
+            headers={
+                "Authorization": f"Bearer {edit_token}",
+                **({"Content-Type": "application/json"} if payload else {}),
+            },
+            method=method,
+        )
+        with urllib.request.urlopen(request, timeout=30) as response:
+            return json.load(response)
+
+    # The escaping check defaces the tagline; a run against a real member
+    # must leave the profile exactly as it found it.
+    original_tagline = profile_request("GET").get("tagline", "")
+    try:
+        profile_request("PUT", {"tagline": "<script>alert(1)</script>"})
+        with urllib.request.urlopen(page_url, timeout=30) as response:
+            page = response.read().decode("utf-8")
+        if "<script>alert" in page:
+            raise AcceptanceFailure("owner text reached the lab page unescaped")
+        if "&lt;script&gt;" not in page:
+            raise AcceptanceFailure("lab page did not render the updated tagline")
+    finally:
+        profile_request("PUT", {"tagline": original_tagline})
 
     owner.send(f"PRIVMSG {herder_account} :editlab")
     owner.wait("lab editor link", 20)

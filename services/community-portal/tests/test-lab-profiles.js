@@ -387,6 +387,15 @@ async function main() {
 		assert.equal(neonEntry.irc_accent, 13);
 		assert.equal(neonEntry.lab_name, "Neon Basement Labs");
 
+		// The gallery card wears the lab's own theme.
+		const themedGallery = await request("GET", "/lab/");
+		assert.match(
+			themedGallery.body,
+			/\.gallery-card\.card-\d+ \.name\{color:#ff00ff;\}/,
+			"the gallery card ignored the lab theme"
+		);
+		assert.match(themedGallery.body, /background:#101018/);
+
 		// Validation rejects hostile or oversized fields outright.
 		const rejects = [
 			{lab_name: "x"},

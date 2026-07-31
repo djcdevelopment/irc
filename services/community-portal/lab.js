@@ -216,10 +216,23 @@ function doorbell() {
 }
 
 function renderGalleryPage(profiles, {nonce}) {
+	// Each card wears its lab's own theme — the gallery is a street of
+	// storefronts, not a directory listing. Only validated #rrggbb tokens
+	// from labTheme ever reach the nonce'd style block.
+	const styles = [];
 	const cards = profiles
-		.map(
-			(profile) =>
-				`<a class="gallery-card" href="/lab/${escapeHtml(profile.lab_slug)}">` +
+		.map((profile, index) => {
+			const theme = labTheme(profile);
+			styles.push(
+				`.gallery-card.card-${index}{background:${theme.bg};` +
+					`border-color:color-mix(in srgb, ${theme.accent} 45%, transparent);}` +
+					`.gallery-card.card-${index}:hover{border-color:${theme.accent};}` +
+					`.gallery-card.card-${index} .name{color:${theme.accent};}` +
+					`.gallery-card.card-${index} .tagline{color:${theme.accent2};}` +
+					`.gallery-card.card-${index} .meta{color:${theme.fg};}`
+			);
+			return (
+				`<a class="gallery-card card-${index}" href="/lab/${escapeHtml(profile.lab_slug)}">` +
 				`<span class="name">${escapeHtml(profile.lab_name)}</span>` +
 				(profile.tagline
 					? `<span class="tagline">${escapeHtml(profile.tagline)}</span>`
@@ -228,7 +241,8 @@ function renderGalleryPage(profiles, {nonce}) {
 				`${Math.max(0, profile.visitors)} visitors · ` +
 				`est. ${escapeHtml(String(profile.created_at).slice(0, 10))}</span>` +
 				"</a>"
-		)
+			);
+		})
 		.join("\n");
 	return `<!DOCTYPE html>
 <html lang="en">
@@ -237,6 +251,7 @@ function renderGalleryPage(profiles, {nonce}) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>The Labs — Omen IRC</title>
 <link rel="stylesheet" href="/lab/lab.css">
+${styles.length ? `<style nonce="${nonce}">${styles.join("\n")}</style>` : ""}
 </head>
 <body class="lab gallery">
 <div class="crt">
