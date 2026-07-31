@@ -2,6 +2,7 @@
 .env
 .secrets/
 *.env
+hearth-bot.env
 
 # Generated Ergo configuration contains the operator password hash
 config/ergo/ircd.yaml

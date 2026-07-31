@@ -23,6 +23,16 @@ internal_token_env = "COMMUNITY_INTERNAL_TOKEN"
 # before this generic ceiling fires.
 agent_timeout_seconds = 660
 
+[hearth]
+# direct = current OpenAI-compatible model call; shadow = direct call plus a
+# no-dispatch HEARTH routing comparison; hearth = HEARTH owns execution.
+mode = "direct"
+endpoint = "https://omen.tail8e749c.ts.net:8443/mcp"
+api_key_env = "HEARTH_API_KEY"
+operation = "llm.chat"
+request_timeout_seconds = 1250
+watch_seconds = 10
+
 [completion]
 # Sent as the system message on every local model request. IRC has no markdown
 # renderer, and a table costs one line per row out of max_output_lines, so a

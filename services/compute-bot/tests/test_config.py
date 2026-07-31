@@ -111,3 +111,57 @@ class ConfigTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ConfigError, "registry name"):
             self._load(models=invalid)
+
+    def test_hearth_mode_requires_https_and_hearth_key_but_not_model_key(self):
+        bot = BOT_CONFIG + """
+[hearth]
+mode = "hearth"
+endpoint = "https://omen.tail.example:8443/mcp"
+api_key_env = "HEARTH_API_KEY"
+"""
+        config = self._load(
+            bot=bot,
+            env={
+                "IRC_BOT_PASSWORD": "present",
+                "COMMUNITY_INTERNAL_TOKEN": "internal-secret",
+                "HEARTH_API_KEY": "hearth-secret",
+            },
+        )
+        self.assertEqual("hearth", config.hearth.mode)
+        self.assertEqual("", config.models["gpt-oss-120b"].api_key)
+        self.assertNotIn("hearth-secret", repr(config))
+        self.assertIn("hearth-secret", config.secrets)
+
+    def test_shadow_mode_still_requires_direct_model_key(self):
+        bot = BOT_CONFIG + """
+[hearth]
+mode = "shadow"
+endpoint = "https://omen.tail.example:8443/mcp"
+api_key_env = "HEARTH_API_KEY"
+"""
+        with self.assertRaisesRegex(ConfigError, "MODEL_KEY"):
+            self._load(
+                bot=bot,
+                env={
+                    "IRC_BOT_PASSWORD": "present",
+                    "COMMUNITY_INTERNAL_TOKEN": "internal-secret",
+                    "HEARTH_API_KEY": "hearth-secret",
+                },
+            )
+
+    def test_remote_hearth_plaintext_is_rejected(self):
+        bot = BOT_CONFIG + """
+[hearth]
+mode = "hearth"
+endpoint = "http://omen.tail.example:8443/mcp"
+api_key_env = "HEARTH_API_KEY"
+"""
+        with self.assertRaisesRegex(ConfigError, "must use HTTPS"):
+            self._load(
+                bot=bot,
+                env={
+                    "IRC_BOT_PASSWORD": "present",
+                    "COMMUNITY_INTERNAL_TOKEN": "internal-secret",
+                    "HEARTH_API_KEY": "hearth-secret",
+                },
+            )

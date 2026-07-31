@@ -8,6 +8,8 @@ This repository deploys a lightweight IRC environment with Docker Compose:
 - The Lounge private browser client and administrative fallback
 - A one-time onboarding portal and public private-mode browser lobby
 - One owner-scoped BotHerder IRC identity per community member
+- HEARTH-backed canonical AI execution with durable jobs, global provider
+  capacity, and immutable result artifacts
 - An outbound-only remote-agent adapter for member-controlled model endpoints
 - Persistent accounts, registered channels, message history, and Lounge state
 - Linux/AM4 production operations and Windows/OMEN rollback operations
@@ -54,6 +56,12 @@ and invite any number of outbound remote agents. See
 [docs/COMMUNITY-ONBOARDING.md](docs/COMMUNITY-ONBOARDING.md) and
 [docs/COMPUTE-BOT.md](docs/COMPUTE-BOT.md).
 
+BotHerder is an IRC protocol adapter rather than an execution service. HEARTH
+owns Request/Job/Invocation identity, provider routing, aggregate capacity,
+usage, and full result artifacts. The reversible deployment modes and trust
+boundary are documented in
+[docs/HEARTH-EXECUTION.md](docs/HEARTH-EXECUTION.md).
+
 A remote agent is any OpenAI-compatible endpoint the inviting member operates.
 [docs/HERMES-AGENT.md](docs/HERMES-AGENT.md) covers connecting a
 [Hermes Agent](https://github.com/NousResearch/hermes-agent), including the
@@ -71,7 +79,8 @@ security tradeoff of exposing an agent's API server to a chat channel.
 | Join backend | `127.0.0.1:9010` on AM4 | HTTP after local TLS termination | Local tailscaled only |
 | Internal Ergo | `ergo:6667` | Plain IRC | Compose network only |
 | BotHerder IRC handoff | `127.0.0.1:6667` on AM4 | Plain IRC | Host-networked BotHerder only |
-| Seeded model | `127.0.0.1:8082/v1` from BotHerder | HTTP plus Bearer authentication | AM4-local inference |
+| Canonical execution | `omen.tail8e749c.ts.net:8443/mcp` from AM4 | Tailnet-only trusted HTTPS through Tailscale Serve | BotHerder's least-privilege HEARTH adapter |
+| Seeded model | `127.0.0.1:8082/v1` from HEARTH over its declared AM4 Provider | HTTP plus Bearer authentication | Routed AM4-local inference; BotHerder direct rollback only |
 
 There is no router port forwarding, public VM, Cloudflare configuration, or
 publicly bound Docker TCP port for IRC. Registration is disabled, all normal
@@ -185,12 +194,11 @@ instructions are in [docs/AM4.md](docs/AM4.md) and
   it is deliberately shown once.
 - The first true off-tailnet acceptance test still requires a Quassel client on
   a non-Tailscale network.
-- BotHerder uses host networking to reach AM4 loopback model endpoints. Its
-  non-root, read-only container can therefore see other loopback listeners even
-  though users can invoke only allow-listed model URLs.
-- BotHerder request limits are currently per member while every Herder shares
-  the same llama.cpp endpoint. Do not raise per-member throughput until a
-  supervisor-level global scheduler bounds aggregate concurrency.
+- BotHerder uses host networking for Ergo, portal, remote-agent compatibility,
+  and direct rollback. Its non-root, read-only container can therefore see AM4
+  loopback listeners even though users can invoke only allow-listed models.
+- HEARTH globally bounds Provider concurrency, but BotHerder's IRC traffic and
+  rolling request limits remain per member.
 - Per-Herder rate limits are in-memory and reset when the container restarts.
 - Token metrics are reported only when a provider supplies them; the UI says
   `not reported` instead of inventing a zero.

@@ -56,6 +56,17 @@ class CommunityConfig:
 
 
 @dataclass(frozen=True)
+class HearthConfig:
+    mode: str
+    endpoint: str
+    api_key_env: str
+    api_key: str = field(repr=False)
+    operation: str = "llm.chat"
+    request_timeout_seconds: float = 1250
+    watch_seconds: float = 10
+
+
+@dataclass(frozen=True)
 class ModelConfig:
     name: str
     model_id: str
@@ -80,15 +91,17 @@ class AppConfig:
     community: CommunityConfig
     models: Mapping[str, ModelConfig]
     log_level: str
+    hearth: HearthConfig | None = None
     system_prompt: str = ""
 
     @property
     def secrets(self) -> tuple[str, ...]:
-        return (
+        return tuple(value for value in (
             self.irc.password,
             self.community.internal_token,
+            self.hearth.api_key if self.hearth else "",
             *(model.api_key for model in self.models.values()),
-        )
+        ) if value)
 
 
 def _read_toml(path: str | Path) -> dict:
@@ -277,6 +290,50 @@ def _load_community(raw: dict, environ: Mapping[str, str]) -> CommunityConfig:
     )
 
 
+def _load_hearth(raw: dict, environ: Mapping[str, str]) -> HearthConfig:
+    table = raw.get("hearth", {})
+    if not isinstance(table, dict):
+        raise ConfigError("[hearth] must be a table")
+    mode = table.get("mode", "direct")
+    if mode not in {"direct", "shadow", "hearth"}:
+        raise ConfigError("hearth.mode must be direct, shadow, or hearth")
+    endpoint = str(table.get("endpoint", "")).strip().rstrip("/")
+    api_key_env = str(table.get("api_key_env", "HEARTH_API_KEY")).strip()
+    api_key = environ.get(api_key_env, "") if api_key_env else ""
+    if mode in {"shadow", "hearth"}:
+        parsed = urlparse(endpoint)
+        if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+            raise ConfigError("hearth.endpoint must be an HTTP(S) MCP URL")
+        if parsed.path.rstrip("/") != "/mcp":
+            raise ConfigError("hearth.endpoint must end in /mcp")
+        if parsed.scheme != "https" and parsed.hostname not in {
+            "127.0.0.1",
+            "localhost",
+            "::1",
+        }:
+            raise ConfigError("non-loopback HEARTH endpoints must use HTTPS")
+        if not api_key:
+            raise ConfigError(
+                f"required HEARTH secret environment variable is unset: {api_key_env}"
+            )
+    operation = str(table.get("operation", "llm.chat")).strip()
+    if not operation or any(char in operation for char in "\r\n\0"):
+        raise ConfigError("hearth.operation must be a non-empty string")
+    return HearthConfig(
+        mode=mode,
+        endpoint=endpoint,
+        api_key_env=api_key_env,
+        api_key=api_key,
+        operation=operation,
+        request_timeout_seconds=_number(
+            table, "request_timeout_seconds", "hearth", default=1250, minimum=5
+        ),
+        watch_seconds=_number(
+            table, "watch_seconds", "hearth", default=10, minimum=0.25
+        ),
+    )
+
+
 def _load_system_prompt(raw: dict) -> str:
     table = raw.get("completion", {})
     if not isinstance(table, dict):
@@ -292,7 +349,9 @@ def _load_system_prompt(raw: dict) -> str:
     return prompt
 
 
-def _load_models(raw: dict, environ: Mapping[str, str]) -> Mapping[str, ModelConfig]:
+def _load_models(
+    raw: dict, environ: Mapping[str, str], *, require_api_keys: bool = True
+) -> Mapping[str, ModelConfig]:
     tables = raw.get("models")
     if not isinstance(tables, dict) or not tables:
         raise ConfigError("models configuration requires at least one [models.NAME] table")
@@ -318,7 +377,7 @@ def _load_models(raw: dict, environ: Mapping[str, str]) -> Mapping[str, ModelCon
 
         api_key_env = _required_string(table, "api_key_env", context)
         api_key = environ.get(api_key_env, "")
-        if not api_key:
+        if require_api_keys and not api_key:
             raise ConfigError(f"required model secret environment variable is unset: {api_key_env}")
         description = _required_string(table, "description", context)
         if len(description.encode("utf-8")) > 300:
@@ -362,12 +421,18 @@ def load_config(
     log_level = logging_table.get("level", "INFO")
     if log_level not in {"DEBUG", "INFO", "WARNING", "ERROR"}:
         raise ConfigError("logging.level must be DEBUG, INFO, WARNING, or ERROR")
+    hearth = _load_hearth(bot_raw, environment)
     return AppConfig(
         irc=_load_irc(bot_raw, environment),
         limits=_load_limits(bot_raw),
         health=_load_health(bot_raw),
         community=_load_community(bot_raw, environment),
-        models=_load_models(models_raw, environment),
+        models=_load_models(
+            models_raw,
+            environment,
+            require_api_keys=hearth.mode in {"direct", "shadow"},
+        ),
         log_level=log_level,
+        hearth=hearth,
         system_prompt=_load_system_prompt(bot_raw),
     )

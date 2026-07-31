@@ -62,15 +62,19 @@ Done on 2026-07-30:
 - The adapter bounds its own concurrency (`OPENAI_MAX_CONCURRENT_REQUESTS`) and
   expires incomplete fragment buffers, which previously leaked.
 - A delivery failure is recorded as `undelivered` rather than `ok`.
+- HEARTH now owns a cross-process, Provider-wide capacity lease. The live
+  llama.cpp `/slots` endpoint reported four slots, recorded as
+  `am4-moe.parallel_slots = 4`.
+- Canonical jobs expose queued, dispatched, running, completion/failure
+  timestamps and queue duration through lifecycle events.
+- Submission idempotency prevents an IRC reconnect from creating a second Job
+  for the same request ID.
 
 Future TODO:
 
-- Add a supervisor-level global scheduler/semaphore and shared `ModelClient`.
-- Verify the actual llama.cpp `--parallel` slot count on port 8082.
-- Bound aggregate concurrency independently from per-Herder limits.
 - Add PONG priority or paced output lines.
-- Expose `queued_at`, queue position, estimated start, dispatch time, and
-  execution deadline.
+- Add queue position and estimated start projections; expose the absolute
+  execution deadline alongside existing event timestamps.
 - Include `working`, errors, help, models, status, and agent listings in the
   practical 70–90-line-per-minute IRC budget.
 - Reap inactive rate-limiter account entries.
@@ -91,8 +95,16 @@ Future TODO:
 - Add IRC multiline or an explicit prompt-continuation protocol.
 - Remove or redesign the adapter's approximately 4,500-byte result truncation.
 - Define identical truncation behavior for local and remote execution.
-- Fail fragmentation overflow explicitly instead of waiting for timeout.
-- Add an access-controlled artifact store for bulk input and output.
+- Move remote-agent bulk results onto HEARTH artifacts.
+- Add an access-controlled download surface for large or binary artifacts.
+
+Done for HEARTH-backed local execution:
+
+- Input and full output are immutable content-addressed artifacts.
+- IRC truncation projects Job/artifact ID, exact size, and SHA-256 instead of
+  losing the complete result.
+- HERDER/1 fragmentation overflow fails explicitly rather than waiting for a
+  timeout.
 
 For a large result, IRC should carry only completion state and a concise
 summary. The artifact record should include its identifier, authorized

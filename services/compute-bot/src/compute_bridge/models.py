@@ -38,6 +38,9 @@ class Completion:
     prompt_tokens: int | None = None
     completion_tokens: int | None = None
     total_tokens: int | None = None
+    artifact: dict[str, Any] | None = None
+    request_id: str | None = None
+    job_id: str | None = None
 
 
 def _extract_usage(payload: Any) -> dict[str, int | None]:

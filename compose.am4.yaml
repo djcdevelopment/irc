@@ -73,6 +73,8 @@ services:
       # Contains only COMMUNITY_INTERNAL_TOKEN. Registrar, operator,
       # credential-encryption, and portal-admin secrets stay portal-only.
       - /etc/omen-irc/bot-herder.env
+      # Dedicated least-privilege HEARTH caller key (profile=irc-adapter).
+      - /etc/omen-irc/hearth-bot.env
     volumes:
       - type: bind
         source: /opt/omen-irc/config/compute-bot/bot.toml

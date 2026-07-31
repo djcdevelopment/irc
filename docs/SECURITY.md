@@ -30,6 +30,7 @@ binding was added for IRC.
 | 9000/TCP | `127.0.0.1` on AM4 | HTTP | Funnel backend for The Lounge |
 | 9010/TCP | `127.0.0.1` on AM4 | HTTP | Funnel backend for `/join` and internal Herder API |
 | 8082/TCP | Existing AM4 model listener; UFW-restricted | HTTP plus Bearer authentication | BotHerder and existing LAN tooling |
+| 8443/TCP on OMEN | Tailnet-only Tailscale Serve | Trusted HTTPS | BotHerder → HEARTH MCP control plane |
 | 6697/TCP | Not published on AM4 | Not used | Retained only by the stopped OMEN rollback |
 
 The Ergo log warns that its container listener 6668 is plaintext because it
@@ -46,6 +47,8 @@ On AM4:
   internal API secrets.
 - `/etc/omen-irc/bot-herder.env` contains only the portal internal token needed
   by the BotHerder supervisor.
+- `/etc/omen-irc/hearth-bot.env` contains the dedicated least-privilege HEARTH
+  caller key.
 - `/etc/omen-irc/ircd.yaml` contains the operator bcrypt hash.
 - `/var/lib/omen-irc/ergo` contains account/channel databases and history.
 - `/var/lib/omen-irc/thelounge` contains Lounge credentials and browser history.
@@ -117,6 +120,19 @@ subnet and a UFW exception, but lets this container reach other AM4 loopback
 listeners. Keep the image minimal, registry URLs reviewed, and Docker
 administration restricted.
 
+In `hearth` mode the model call crosses a separate private control-plane lane:
+AM4 connects to `https://omen.tail8e749c.ts.net:8443/mcp` through Tailscale
+Serve. This is tailnet-only and must never be enabled with Funnel. Trusted TLS,
+an exact gateway Host/Origin allow-list entry, and a dedicated `irc-adapter`
+profile protect the lane. The profile can execute and read its own delegated
+jobs; it cannot access kernel, filesystem, cloud, operator, or unrelated caller
+work.
+
+HEARTH stores prompt/result bodies as protected immutable artifacts. Execution
+events and gateway audit entries retain IDs, sizes, and SHA-256 rather than
+content. The delegated principal is Ergo's SASL-authenticated account tag, not
+the visible nickname.
+
 ## Current tradeoffs
 
 - Funnel is a beta service with bandwidth limits and a restricted public port
@@ -126,7 +142,8 @@ administration restricted.
 - Port 8443 is less conventional for IRC than 6697.
 - Funnel availability depends on tailscaled and Tailscale's ingress service.
 - The first non-tailnet Quassel acceptance test remains manual.
-- BotHerder rate-limit state is memory-only and resets on restart.
+- BotHerder rate-limit state is memory-only and resets on restart. HEARTH's
+  Provider-wide capacity lease still bounds aggregate backend concurrency.
 - Public Lounge credentials are only as safe as each member's password hygiene;
   future Steam/OpenID binding should add recovery, not replace Ergo SASL.
 - The pre-existing 8082 launcher passes its bearer key through llama.cpp's

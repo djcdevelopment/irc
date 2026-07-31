@@ -7,6 +7,7 @@ bot_env_file="${OMEN_IRC_CONFIG_DIR:-/etc/omen-irc}/compute-bot.env"
 bootstrap_file="${OMEN_IRC_CONFIG_DIR:-/etc/omen-irc}/bootstrap.json"
 community_env_file="${OMEN_IRC_CONFIG_DIR:-/etc/omen-irc}/community.env"
 herder_env_file="${OMEN_IRC_CONFIG_DIR:-/etc/omen-irc}/bot-herder.env"
+hearth_env_file="${OMEN_IRC_CONFIG_DIR:-/etc/omen-irc}/hearth-bot.env"
 
 pass_count=0
 
@@ -41,6 +42,7 @@ resolve_compose() {
 [[ -r "$bootstrap_file" ]] || fail "Missing $bootstrap_file"
 [[ -r "$community_env_file" ]] || fail "Missing $community_env_file"
 [[ -r "$herder_env_file" ]] || fail "Missing $herder_env_file"
+[[ -r "$hearth_env_file" ]] || fail "Missing $hearth_env_file"
 declare -a compose
 resolve_compose
 
@@ -60,6 +62,9 @@ owner_mode="$(stat --format '%U:%G %a' "$bot_env_file")"
 herder_owner_mode="$(stat --format '%U:%G %a' "$herder_env_file")"
 [[ "$herder_owner_mode" == "root:root 600" ]] ||
     fail "$herder_env_file permissions are $herder_owner_mode"
+hearth_owner_mode="$(stat --format '%U:%G %a' "$hearth_env_file")"
+[[ "$hearth_owner_mode" == "root:root 600" ]] ||
+    fail "$hearth_env_file permissions are $hearth_owner_mode"
 pass "BotHerder secret files are root-only"
 
 if ! python3 - "$bot_id" <<'PY'
@@ -92,6 +97,12 @@ then
 fi
 pass "BotHerder has least-privilege secrets and read-only member records"
 
+if ! "${compose[@]}" -f "$compose_file" exec -T bot-herder \
+    python -m compute_bridge.hearthcheck; then
+    fail "BotHerder cannot reach the private HEARTH execution path"
+fi
+pass "BotHerder's configured HEARTH mode and private ingress are healthy"
+
 ss -lnt | grep -Eq '127\.0\.0\.1:6667[[:space:]]' ||
     fail "BotHerder IRC handoff is not listening on 127.0.0.1:6667"
 if ss -lnt | grep -Eq '(^|[[:space:]])(\*|0\.0\.0\.0|\[::\]):6667[[:space:]]'; then
@@ -116,6 +127,7 @@ grep -q 'irc_registered account=DereksBotHerder' <<<"$logs" ||
 pass "DereksBotHerder SASL-registered with Ergo"
 
 if ! python3 - "$bot_env_file" "$community_env_file" "$herder_env_file" \
+    "$hearth_env_file" \
     "$bootstrap_file" \
     <(printf '%s' "$logs") <<'PY'
 import json
@@ -125,10 +137,11 @@ import sys
 env_path = pathlib.Path(sys.argv[1])
 community_path = pathlib.Path(sys.argv[2])
 herder_path = pathlib.Path(sys.argv[3])
-bootstrap_path = pathlib.Path(sys.argv[4])
-log_text = pathlib.Path(sys.argv[5]).read_text(encoding="utf-8")
+hearth_path = pathlib.Path(sys.argv[4])
+bootstrap_path = pathlib.Path(sys.argv[5])
+log_text = pathlib.Path(sys.argv[6]).read_text(encoding="utf-8")
 secrets = []
-for path in (env_path, community_path, herder_path):
+for path in (env_path, community_path, herder_path, hearth_path):
     for line in path.read_text(encoding="utf-8").splitlines():
         if "=" in line and not line.lstrip().startswith("#"):
             name, value = line.split("=", 1)

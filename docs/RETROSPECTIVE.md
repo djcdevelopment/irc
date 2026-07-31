@@ -201,8 +201,12 @@ Detailed compute-limit gates are in
   Agent, and the first two-person session.
 - [HERMES-AGENT.md](HERMES-AGENT.md): connecting a Hermes Agent as a remote
   agent, and the security tradeoff it carries.
-- [HEARTH-GAP-ANALYSIS.md](HEARTH-GAP-ANALYSIS.md): what HEARTH provides today
-  and what a BotHerder-to-HEARTH migration would require first.
+- [HEARTH-GAP-ANALYSIS.md](HEARTH-GAP-ANALYSIS.md): the original gaps and how
+  they were closed for BotHerder execution.
+- [HEARTH-EXECUTION.md](HEARTH-EXECUTION.md): canonical execution architecture,
+  rollout, and rollback.
+- [RETROSPECTIVE-HEARTH-EXECUTION.md](RETROSPECTIVE-HEARTH-EXECUTION.md): why
+  the control plane was built in HEARTH before migrating IRC.
 - [AM4.md](AM4.md): production topology and host layout.
 - [OPERATIONS.md](OPERATIONS.md): administration, backup, recovery, and
   teardown.

@@ -10,6 +10,7 @@ from compute_bridge.config import (
     AppConfig,
     CommunityConfig,
     HealthConfig,
+    HearthConfig,
     IRCConfig,
     LimitsConfig,
     ModelConfig,
@@ -162,6 +163,94 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
         await self._channel("!ask test explain the tradeoff")
         await asyncio.gather(*self.bot.request_tasks)
         self.assertEqual(seen["prompt"], "explain the tradeoff")
+
+    async def test_hearth_mode_uses_canonical_client_instead_of_direct_endpoint(self):
+        calls = []
+
+        class FakeHearth:
+            async def complete(
+                self,
+                model,
+                prompt,
+                *,
+                account,
+                idempotency_key,
+                system_prompt="",
+            ):
+                calls.append(
+                    (model.name, prompt, account, idempotency_key, system_prompt)
+                )
+                return Completion(
+                    text="canonical result",
+                    job_id="job_123",
+                    request_id="req_123",
+                    artifact={
+                        "artifact_id": "art_123",
+                        "size": 16,
+                        "sha256": "a" * 64,
+                    },
+                )
+
+            async def close(self):
+                return None
+
+        async def direct_must_not_run(_model, _prompt):
+            self.fail("direct model endpoint must not run in hearth mode")
+
+        hearth_config = HearthConfig(
+            mode="hearth",
+            endpoint="https://omen.example:8443/mcp",
+            api_key_env="HEARTH_API_KEY",
+            api_key="secret",
+        )
+        object.__setattr__(
+            self.bot,
+            "config",
+            replace(self.bot.config, hearth=hearth_config),
+        )
+        self.bot.hearth = FakeHearth()
+        self.bot.model_client.complete = direct_must_not_run
+        await self._channel("!ask test use the ledger")
+        await asyncio.gather(*self.bot.request_tasks)
+        self.assertEqual("use the ledger", calls[0][1])
+        self.assertEqual("Alice", calls[0][2])
+        self.assertTrue(calls[0][3].startswith("irc:alicesherder:"))
+        self.assertTrue(any("canonical result" in text for _, text in self.replies))
+
+    async def test_hearth_large_result_projects_artifact_reference(self):
+        class FakeHearth:
+            async def complete(self, *_args, **_kwargs):
+                return Completion(
+                    text="x" * 5000,
+                    job_id="job_123",
+                    artifact={
+                        "artifact_id": "art_123",
+                        "size": 5000,
+                        "sha256": "b" * 64,
+                    },
+                )
+
+            async def close(self):
+                return None
+
+        object.__setattr__(
+            self.bot,
+            "config",
+            replace(
+                self.bot.config,
+                hearth=HearthConfig(
+                    mode="hearth",
+                    endpoint="https://omen.example:8443/mcp",
+                    api_key_env="HEARTH_API_KEY",
+                    api_key="secret",
+                ),
+            ),
+        )
+        self.bot.hearth = FakeHearth()
+        await self._channel("!ask test long result")
+        await asyncio.gather(*self.bot.request_tasks)
+        self.assertTrue(any("artifact=art_123" in text for _, text in self.replies))
+        self.assertTrue(any("sha256=" + ("b" * 64) in text for _, text in self.replies))
 
     async def test_acknowledgement_names_the_chosen_provider(self):
         async def completion(model, prompt):
