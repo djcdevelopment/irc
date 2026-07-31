@@ -26,7 +26,7 @@ agent_timeout_seconds = 660
 [hearth]
 # direct = current OpenAI-compatible model call; shadow = direct call plus a
 # no-dispatch HEARTH routing comparison; hearth = HEARTH owns execution.
-mode = "direct"
+mode = "hearth"
 endpoint = "https://omen.tail8e749c.ts.net:8443/mcp"
 api_key_env = "HEARTH_API_KEY"
 operation = "llm.chat"
