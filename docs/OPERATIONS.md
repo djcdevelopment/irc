@@ -49,6 +49,25 @@ Run its live acceptance suite:
 sudo python3 /opt/omen-irc/scripts/acceptance-compute-bot-am4.py
 ```
 
+BotHerder execution is controlled by `[hearth].mode` in
+`config/compute-bot/bot.toml`: `direct` is rollback, `shadow` performs a
+content-free/no-dispatch route comparison, and `hearth` uses the canonical
+execution lifecycle. `!status` reports the active mode.
+
+Provision the private route and least-privilege adapter key on OMEN:
+
+```powershell
+cd C:\work\commandcenter
+.\hearth\tools\configure-private-ingress.ps1
+.\hearth\tools\provision-irc-adapter.ps1
+```
+
+The latter writes `/etc/omen-irc/hearth-bot.env` over SSH without printing the
+key. Restart HEARTH after changing the trusted proxy hostname, then recreate
+`bot-herder`. Verify `tailscale serve status` on OMEN says **Serve**, not
+Funnel, for port 8443. Full procedure and rollback are in
+[HEARTH-EXECUTION.md](HEARTH-EXECUTION.md).
+
 The disruptive model stop/restart test is documented in
 [COMPUTE-BOT.md](COMPUTE-BOT.md) and should run only during a maintenance
 window.
@@ -122,6 +141,11 @@ operator-controlled recovery session, atomically replacing
 Rotate a model key at its endpoint first, update the corresponding env
 variable, recreate the bot, and verify that the old key fails. Do not print
 either value.
+
+Rotate the HEARTH adapter key from OMEN with
+`hearth\tools\provision-irc-adapter.ps1`, then recreate `bot-herder`. Confirm
+`check-compute-bot-am4.sh` can plan a no-dispatch execution and that neither old
+nor new key appears in logs.
 
 Disable only IRC publication without disturbing the gallery:
 

@@ -9,6 +9,11 @@ record. Each session has its own visible nick, SASL password, owner, rate
 limiter, pending queue, uptime, and metrics identity. It is a personal bot
 session, not a shared command identity.
 
+In production execution mode, BotHerder does not call a model endpoint. It is a
+protocol adapter to HEARTH, which owns the Request/Job/Invocation lifecycle,
+provider routing, aggregate capacity, usage, and full result artifact. See
+[HEARTH-EXECUTION.md](HEARTH-EXECUTION.md).
+
 ## Commands
 
 Your own Herder answers a bare `!` command:
@@ -52,10 +57,12 @@ invite <agent-name>
 revoke <agent-account>
 ```
 
-## Local model registry
+## Model presentation registry
 
-`config/compute-bot/models.toml` is the operator-controlled allow-list. The
-seeded endpoint is AM4-local:
+`config/compute-bot/models.toml` is BotHerder's operator-controlled command
+allow-list and display registry. The endpoint/key fields remain for `direct`
+rollback and `shadow`; in `hearth` mode HEARTH independently resolves the
+declared model through its Provider registry:
 
 ```toml
 [models.gpt-oss-120b]
@@ -69,16 +76,17 @@ description = "Local 120B reasoning model on AM4"
 ```
 
 The effective output budget is never below `min_max_tokens`, preventing an
-empty reasoning-model result.
+empty reasoning-model result. A model must be allowed by both BotHerder and
+HEARTH; IRC cannot add one.
 
 To add a host model:
 
-1. Add a `[models.NAME]` table with an `/v1` base URL.
-2. Add its `api_key_env` value to root-only
-   `/etc/omen-irc/compute-bot.env`.
-3. Build the test target.
-4. Recreate `bot-herder`.
-5. Run both acceptance suites.
+1. Declare the model on a HEARTH Provider and verify that Provider's global
+   `parallel_slots`.
+2. Add the corresponding `[models.NAME]` presentation entry here.
+3. Keep the direct endpoint key in root-only
+   `/etc/omen-irc/compute-bot.env` only if rollback/shadow is required.
+4. Build the test target, recreate `bot-herder`, and run both acceptance suites.
 
 IRC users cannot submit endpoints, model IDs, credentials, tools, or shell
 commands.
@@ -101,7 +109,9 @@ You are answering in an IRC channel. Write plain text only: no markdown, ...
 ```
 
 An empty string sends no system message. Remote agents are unaffected; they
-run their own adapter and their own prompt.
+run their own adapter and their own prompt. The system message is passed as the
+HEARTH Operation's `system` argument, so switching execution mode does not
+change answer shape.
 
 Whatever markdown still arrives is flattened before chunking. Horizontal rules,
 code fences, and table separator rows are dropped; table rows become
@@ -150,7 +160,16 @@ Defaults per Herder:
 Endpoint errors, disconnects, timeouts, invalid fragments, and empty responses
 produce a short public error and do not terminate the IRC session.
 
-## Metrics and logging
+## Canonical execution, metrics, and logging
+
+HEARTH creates stable `req_…`, `job_…`, and `inv_…` identities and stores the
+full prompt and result in immutable content-addressed artifacts. It records the
+authenticated IRC account as the principal and the authenticated HEARTH caller
+as the adapter. A Provider-wide lease bounds aggregate llama.cpp concurrency
+independently of how many personal Herders are online.
+
+If the IRC projection truncates a result, the final line identifies the Job and
+artifact with exact size and SHA-256. The full result is not discarded.
 
 `/var/lib/omen-irc/bot-herder/runtime/metrics.sqlite3` stores operational metadata:
 request ID, Herder/caller/provider account names, timestamp, duration, outcome,
@@ -163,20 +182,27 @@ to a disconnect is not counted as a success. The request ID is shown in the
 `working...` acknowledgement, which is what joins a channel message to its log
 and ledger entry.
 
-It never stores prompt or completion text. Logs exclude raw IRC frames, HTTP
-bodies, credentials, and message content. Missing provider usage is displayed
-as `not reported`.
+The local metrics projection never stores prompt or completion text. HEARTH
+stores content only in its protected artifact store; execution events and the
+legacy gateway audit retain metadata/digests, not content. Logs exclude raw IRC
+frames, HTTP bodies, credentials, and message content. Missing provider usage is
+displayed as `not reported`.
 
 ## Networking and hardening
 
-The supervisor uses host networking only because the seeded AM4 model binds
-host loopback:
+The supervisor retains host networking for Ergo, portal, direct rollback, and
+remote-agent compatibility:
 
 ```text
 IRC:   127.0.0.1:6667
-Model: 127.0.0.1:8082/v1
+Direct rollback model: 127.0.0.1:8082/v1
 Portal internal API: 127.0.0.1:9010
+Canonical execution: https://omen.tail8e749c.ts.net:8443/mcp
 ```
+
+The HEARTH route is tailnet-only Tailscale Serve with trusted TLS, not public
+Funnel. A dedicated `irc-adapter` key is loaded from root-only
+`/etc/omen-irc/hearth-bot.env`.
 
 The container runs as UID/GID 1000 with a read-only root filesystem, small
 tmpfs, no capabilities, `no-new-privileges`, and CPU/memory/PID limits. Member

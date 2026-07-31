@@ -30,7 +30,7 @@ surfaced as silence in front of a guest.
 `BotHerder20_spec.md` assigns canonical requests, job lifecycle, cancellation,
 subscribable events, result artifacts, per-user principals, capacity
 enforcement, and approvals to HEARTH. Reading the implementation showed that
-none of those exist there. `submit_task` writes a file over SSH and
+none of those existed there at the time. `submit_task` wrote a file over SSH and
 `task_status` reports completion by checking whether a result file exists.
 
 Two vocabulary mismatches did most of the damage to the brief.
@@ -43,6 +43,10 @@ This cost one exploration pass and saved a migration that could not have
 worked. It is written down in
 [HEARTH-GAP-ANALYSIS.md](HEARTH-GAP-ANALYSIS.md) so the verification is not
 repeated.
+
+That gap was subsequently closed for canonical model execution; see
+[HEARTH-EXECUTION.md](HEARTH-EXECUTION.md). Human approval workflow remains
+future work.
 
 ### The integration was already built
 
@@ -157,9 +161,9 @@ timeout making the first three more pressing:
 2. Cancellation, now that a request can occupy a slot for eleven minutes.
 3. Progress and liveness frames, so a long agentic run is distinguishable from a
    dead one.
-4. A supervisor-level scheduler bounding aggregate concurrency across Herders.
-5. The HEARTH prerequisites in [HEARTH-GAP-ANALYSIS.md](HEARTH-GAP-ANALYSIS.md),
-   if that migration is ever attempted.
+4. Queue-position and progress projections for long remote-agent work.
+5. Moving remote-agent bulk results onto the now-implemented HEARTH artifact
+   lifecycle.
 
 The clearest signal for whether the syntax work landed is whether the second
 member needs to ask what to type. That question was asked once, at 5:24 pm, and
