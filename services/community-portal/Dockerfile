@@ -6,9 +6,10 @@ WORKDIR /app
 COPY server.js /app/server.js
 COPY public /app/public
 COPY agent-kit /app/agent-kit
-COPY tests/test-public-app.js /app/tests/test-public-app.js
+COPY tests /app/tests
 
 RUN node /app/tests/test-public-app.js \
+    && node /app/tests/test-invite-retry.js \
     && chown -R node:node /app
 
 USER node

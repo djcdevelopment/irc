@@ -6,6 +6,7 @@ const elements = Object.fromEntries(
 		"subtitle",
 		"expectations",
 		"error",
+		"locked-note",
 		"member-form",
 		"agent-form",
 		"working",
@@ -65,7 +66,10 @@ async function api(path, body) {
 	});
 	const value = await response.json().catch(() => ({}));
 	if (!response.ok) {
-		throw new Error(value.message || "The request could not be completed.");
+		throw Object.assign(
+			new Error(value.message || "The request could not be completed."),
+			{lockedNames: value.locked_names}
+		);
 	}
 	return value;
 }
@@ -73,6 +77,26 @@ async function api(path, body) {
 function suggestedHerder(account) {
 	const cleaned = account.replace(/[^A-Za-z0-9]/g, "");
 	return `${cleaned || "My"}sBotHerder`.slice(0, 32);
+}
+
+function applyLockedNames(locked) {
+	const fields = [
+		["account", elements.account],
+		["herder_account", elements.herderAccount],
+	];
+	let anyLocked = false;
+	for (const [key, field] of fields) {
+		if (!locked || !locked[key]) {
+			continue;
+		}
+		field.value = locked[key];
+		field.disabled = true;
+		field.dataset.edited = "true";
+		anyLocked = true;
+	}
+	if (anyLocked) {
+		show(elements.lockedNote);
+	}
 }
 
 function startWorking() {
@@ -154,6 +178,7 @@ async function initialize() {
 				"Choose two names. Everything else is prepared for you.";
 			elements.displayName.value =
 				preview.display_name === "Friend" ? "" : preview.display_name;
+			applyLockedNames(preview.locked_names);
 			show(elements.memberForm);
 		} else {
 			elements.title.textContent = "Connect a remote agent";
@@ -193,6 +218,7 @@ elements.memberForm.addEventListener("submit", async (event) => {
 		finishMember(result);
 	} catch (error) {
 		showError(error.message);
+		applyLockedNames(error.lockedNames);
 		show(elements.memberForm);
 	}
 });

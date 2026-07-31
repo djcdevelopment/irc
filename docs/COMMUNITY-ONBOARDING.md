@@ -115,6 +115,9 @@ be needed.
 - Invite tokens are stored only as SHA-256 hashes.
 - Generated credentials are encrypted with AES-256-GCM only while a failed
   provisioning attempt remains recoverable.
+- After a rejected name, a retry uses the names from the new submission. A name
+  whose IRC account the attempt already created keeps its password and stays
+  fixed; the portal locks that field and says why.
 - A redeemed invite clears its encrypted credential envelope.
 - Member and agent passwords are returned once.
 - Provider API keys stay in the downloaded agent environment on the remote
