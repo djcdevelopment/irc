@@ -110,22 +110,18 @@ if ss -lnt | grep -Eq '(^|[[:space:]])(\*|0\.0\.0\.0|\[::\]):6667[[:space:]]'; t
 fi
 pass "BotHerder IRC handoff is loopback-only"
 
-unauthorized_status="$(
-    curl --silent --show-error --max-time 5 \
-        --output /dev/null --write-out '%{http_code}' \
-        --header 'Content-Type: application/json' \
-        --data '{}' \
-        http://127.0.0.1:8082/v1/chat/completions
-)"
-[[ "$unauthorized_status" == 401 || "$unauthorized_status" == 403 ]] ||
-    fail "Model endpoint does not enforce bearer authentication"
-pass "Model chat endpoint rejects unauthenticated requests"
+# The local :8082 bearer-auth probe was removed on 2026-08-24. AM4 hosts no
+# model listener any more -- the B70s that served gpt-oss-120b moved into
+# OMEN -- so curl could not connect, the status came back "000", and this
+# check failed on every run. Inference reaches the member through HEARTH now,
+# whose authentication the hearthcheck above already exercises. Do not restore
+# this probe unless AM4 regains a local llama-server.
 
 primary_nick="$(
     sed -n 's/^account *= *"\([^"]*\)".*/\1/p' \
         "$project_dir/config/compute-bot/bot.toml" | head -n 1
 )"
-primary_nick="${primary_nick:-DereksBotHerder}"
+primary_nick="${primary_nick:-HEARTH}"
 
 logs="$("${compose[@]}" -f "$compose_file" logs --no-color bot-herder)"
 grep -q "irc_registered account=$primary_nick" <<<"$logs" ||

@@ -1,8 +1,6 @@
-[models.gpt-oss-120b]
-model_id = "gpt-oss-120b"
-endpoint = "http://127.0.0.1:8082/v1"
-api_key_env = "GPT_OSS_120B_API_KEY"
+[models.qwen3-30b-a3b]
+model_id = "qwen3-30b-a3b"
 max_tokens = 512
 min_max_tokens = 512
 timeout_seconds = 120
-description = "Local 120B reasoning model on AM4"
+description = "Qwen3-30B-A3B on OMEN's dual Arc Pro B70s, via HEARTH"

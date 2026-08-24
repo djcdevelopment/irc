@@ -47,10 +47,12 @@ The same loopback portal serves the static member guide at
 pages and editor at `https://am4.tail8e749c.ts.net/lab/<slug>` and
 `/lab/edit`.
 
-BotHerder uses host networking so it can reach both
-`127.0.0.1:6667` (the loopback-only Ergo publication) and the existing
-`127.0.0.1:8082/v1` model endpoint without a Docker-subnet UFW exception.
-This does not change the public Funnel path.
+BotHerder uses host networking so it can reach `127.0.0.1:6667` (the
+loopback-only Ergo publication) and the portal's internal API without a
+Docker-subnet UFW exception. It no longer reaches a local model endpoint: AM4
+has hosted no inference since the B70s moved into OMEN on 2026-08-20, and
+completions travel over the tailnet to HEARTH instead. This does not change the
+public Funnel path.
 
 ## Ship code to AM4
 

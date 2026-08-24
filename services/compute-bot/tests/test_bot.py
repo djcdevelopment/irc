@@ -169,13 +169,16 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
                     "tools": [{"name": "list_operations"}],
                     "operations": [{"name": "llm.chat", "description": "chat"}],
                     "providers": [{
-                        "name": "am4-moe",
-                        "models": ["gpt-oss-120b"],
+                        "name": "omen-arc",
+                        # "test" is allow-listed by models.toml; "gpt-oss-120b"
+                        # is a model HEARTH can route but this community may not
+                        # spend, so !models must show the first and hide it.
+                        "models": ["test", "gpt-oss-120b"],
                         "tags": ["research"],
-                        "node": "am4",
-                        "hardware_profile_id": "am4-dual-b70",
-                        "context_bytes": 57344,
-                        "parallel_slots": 4,
+                        "node": "omen",
+                        "hardware_profile_id": "omen-285k-dual-b70-2026H2",
+                        "context_bytes": 229376,
+                        "parallel_slots": 2,
                     }],
                     "kernel": {"event_count": 42, "providers": ["execution_control"]},
                     "executions": [{
@@ -201,8 +204,12 @@ class BotCommandTests(unittest.IsolatedAsyncioTestCase):
         def plain(text):
             return re.sub(r"\x03\d{0,2}|[\x02\x0f]", "", text)
 
-        self.assertIn("gpt-oss-120b via am4-moe", plain(self.replies[0][1]))
-        self.assertIn("hardware=am4-dual-b70", plain(self.replies[1][1]))
+        self.assertIn("test via omen-arc", plain(self.replies[0][1]))
+        self.assertNotIn(
+            "gpt-oss-120b",
+            " ".join(plain(text) for _, text in self.replies),
+        )
+        self.assertIn("hardware=omen-285k-dual-b70-2026H2", plain(self.replies[1][1]))
         self.assertTrue(
             any("ledger_events=42" in plain(text) for _, text in self.replies)
         )

@@ -57,8 +57,8 @@ class FakeHearthClient(HearthClient):
             }
         if tool == "plan_execution":
             return {
-                "provider": "am4-moe",
-                "model": "gpt-oss-120b",
+                "provider": "omen-arc",
+                "model": "qwen3-30b-a3b",
                 "dispatch": False,
             }
         raise AssertionError(tool)
@@ -66,10 +66,12 @@ class FakeHearthClient(HearthClient):
 
 def model():
     return ModelConfig(
-        name="gpt-oss-120b",
-        model_id="gpt-oss-120b",
-        endpoint="http://127.0.0.1:8082/v1",
-        api_key_env="MODEL_KEY",
+        name="qwen3-30b-a3b",
+        model_id="qwen3-30b-a3b",
+        # Empty on purpose: in hearth mode the bot sends only model_id to the
+        # door and never dials the model, so there is no endpoint to record.
+        endpoint="",
+        api_key_env="",
         api_key="",
         max_tokens=512,
         min_max_tokens=512,

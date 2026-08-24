@@ -10,7 +10,7 @@ owner_account = "admin"
 # channel answer at once.
 access_mode = "authenticated"
 # Used when a request names no model or agent.
-default_model = "gpt-oss-120b"
+default_model = "qwen3-30b-a3b"
 channels = ["#general", "#ops"]
 reconnect_initial_seconds = 2
 reconnect_max_seconds = 60

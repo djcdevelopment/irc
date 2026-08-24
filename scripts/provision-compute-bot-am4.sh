@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Compatibility entry point: secrets still use the historical filename, while
-# the deployed IRC identity and service are now DereksBotHerder / bot-herder.
+# the deployed IRC identity and service are now HEARTH / bot-herder.
 set -euo pipefail
 
 project_dir="${OMEN_IRC_PROJECT_DIR:-/opt/omen-irc}"
@@ -43,55 +43,15 @@ if destination.exists():
             values[name] = value
 
 values.setdefault("IRC_BOT_PASSWORD", secrets.token_urlsafe(32))
-model_key = values.get("GPT_OSS_120B_API_KEY") or os.environ.get(
-    "GPT_OSS_120B_API_KEY"
-)
-
-def key_from_running_server():
-    for process in pathlib.Path("/proc").iterdir():
-        if not process.name.isdigit():
-            continue
-        try:
-            arguments = [
-                item.decode("utf-8", errors="strict")
-                for item in (process / "cmdline").read_bytes().split(b"\0")
-                if item
-            ]
-        except (OSError, UnicodeError):
-            continue
-        if not arguments or "llama-server" not in pathlib.Path(arguments[0]).name:
-            continue
-        try:
-            port_index = arguments.index("--port")
-        except ValueError:
-            continue
-        if (
-            port_index + 1 >= len(arguments)
-            or arguments[port_index + 1] != "8082"
-        ):
-            continue
-        if "--api-key" in arguments:
-            index = arguments.index("--api-key")
-            if index + 1 < len(arguments):
-                return arguments[index + 1]
-        if "--api-key-file" in arguments:
-            index = arguments.index("--api-key-file")
-            if index + 1 < len(arguments):
-                return pathlib.Path(arguments[index + 1]).read_text(
-                    encoding="utf-8"
-                ).splitlines()[0]
-    return None
-
-if not model_key:
-    model_key = key_from_running_server()
-if not model_key:
-    raise SystemExit(
-        "No 8082 API key found. Set GPT_OSS_120B_API_KEY for this command."
-    )
-values["GPT_OSS_120B_API_KEY"] = model_key
+# The GPT_OSS_120B_API_KEY recovery was removed on 2026-08-24. It scraped
+# /proc for a `llama-server --port 8082` process to re-learn the bearer key,
+# and hard-exited when it found none. AM4 hosts no model listener any more --
+# the B70s moved into OMEN -- so that path could only ever fail here, blocking
+# re-provisioning entirely. In hearth mode the bot dials no model directly; it
+# needs IRC_BOT_PASSWORD and the HEARTH key, which lives in its own env file.
 
 safe_value = re.compile(r"^[A-Za-z0-9._~+/=-]+$")
-for name in ("IRC_BOT_PASSWORD", "GPT_OSS_120B_API_KEY"):
+for name in ("IRC_BOT_PASSWORD",):
     if not safe_value.fullmatch(values[name]):
         raise SystemExit(f"{name} contains unsafe env-file characters")
 
@@ -102,9 +62,6 @@ try:
     os.fchmod(fd, 0o600)
     with os.fdopen(fd, "w", encoding="utf-8") as handle:
         handle.write(f"IRC_BOT_PASSWORD={values['IRC_BOT_PASSWORD']}\n")
-        handle.write(
-            f"GPT_OSS_120B_API_KEY={values['GPT_OSS_120B_API_KEY']}\n"
-        )
         handle.flush()
         os.fsync(handle.fileno())
     os.replace(temporary_name, destination)

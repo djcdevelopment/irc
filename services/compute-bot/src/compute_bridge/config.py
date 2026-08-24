@@ -396,8 +396,18 @@ def _load_storefront(raw: dict) -> StorefrontConfig:
 
 
 def _load_models(
-    raw: dict, environ: Mapping[str, str], *, require_api_keys: bool = True
+    raw: dict, environ: Mapping[str, str], *, direct_dialing: bool = True
 ) -> Mapping[str, ModelConfig]:
+    """Parse the model registry.
+
+    ``direct_dialing`` is False in ``hearth`` mode, where the bot never opens a
+    model connection itself — it sends only ``model_id`` to the door and HEARTH
+    owns routing. There, ``endpoint`` and ``api_key_env`` are optional, because
+    the live rung binds OMEN loopback and AM4 cannot reach it: any value written
+    here would be a URL nothing dials. This deployment does not fake operational
+    truth, so it records none rather than a plausible one. Both stay required in
+    ``direct``/``shadow`` mode, which do dial the model directly.
+    """
     tables = raw.get("models")
     if not isinstance(tables, dict) or not tables:
         raise ConfigError("models configuration requires at least one [models.NAME] table")
@@ -410,20 +420,35 @@ def _load_models(
         if not isinstance(table, dict):
             raise ConfigError(f"{context} must be a table")
 
-        endpoint = _required_string(table, "endpoint", context).rstrip("/")
-        parsed = urlparse(endpoint)
-        if (
-            parsed.scheme not in {"http", "https"}
-            or not parsed.hostname
-            or parsed.query
-            or parsed.fragment
-            or not parsed.path.endswith("/v1")
-        ):
-            raise ConfigError(f"{context}.endpoint must be an HTTP(S) base URL ending in /v1")
+        if direct_dialing:
+            endpoint = _required_string(table, "endpoint", context).rstrip("/")
+        else:
+            endpoint = table.get("endpoint", "")
+            if not isinstance(endpoint, str):
+                raise ConfigError(f"{context}.endpoint must be a string")
+            endpoint = endpoint.strip().rstrip("/")
+        if endpoint:
+            parsed = urlparse(endpoint)
+            if (
+                parsed.scheme not in {"http", "https"}
+                or not parsed.hostname
+                or parsed.query
+                or parsed.fragment
+                or not parsed.path.endswith("/v1")
+            ):
+                raise ConfigError(
+                    f"{context}.endpoint must be an HTTP(S) base URL ending in /v1"
+                )
 
-        api_key_env = _required_string(table, "api_key_env", context)
-        api_key = environ.get(api_key_env, "")
-        if require_api_keys and not api_key:
+        if direct_dialing:
+            api_key_env = _required_string(table, "api_key_env", context)
+        else:
+            api_key_env = table.get("api_key_env", "")
+            if not isinstance(api_key_env, str):
+                raise ConfigError(f"{context}.api_key_env must be a string")
+            api_key_env = api_key_env.strip()
+        api_key = environ.get(api_key_env, "") if api_key_env else ""
+        if direct_dialing and not api_key:
             raise ConfigError(f"required model secret environment variable is unset: {api_key_env}")
         description = _required_string(table, "description", context)
         if len(description.encode("utf-8")) > 300:
@@ -476,7 +501,7 @@ def load_config(
         models=_load_models(
             models_raw,
             environment,
-            require_api_keys=hearth.mode in {"direct", "shadow"},
+            direct_dialing=hearth.mode in {"direct", "shadow"},
         ),
         log_level=log_level,
         hearth=hearth,

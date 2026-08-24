@@ -249,7 +249,7 @@ async function main() {
 		// --- M2: HEARTH snapshot ingestion ----------------------------------
 		const snapshot = {
 			providers: [
-				{name: "omen-ollama", models: ["qwen3-coder:30b"], tags: ["default"]},
+				{name: "omen-arc", models: ["qwen3-30b-a3b"], tags: ["default"]},
 			],
 			operations: [{name: "llm.chat", description: "conversational completion"}],
 			kernel: {ledger_events: 22_150, gateway_providers: 17},
@@ -305,8 +305,8 @@ async function main() {
 		);
 		assert.equal(accepted.status, 200);
 		let projected = await request("GET", "/lab/neon-basement");
-		assert.match(projected.body, /omen-ollama/);
-		assert.match(projected.body, /qwen3-coder:30b/);
+		assert.match(projected.body, /omen-arc/);
+		assert.match(projected.body, /qwen3-30b-a3b/);
 		assert.match(projected.body, /projected from HEARTH · as of \d\d:\d\d UTC/);
 		assert.doesNotMatch(projected.body, /projection stale/);
 

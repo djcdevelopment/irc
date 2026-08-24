@@ -64,9 +64,9 @@ one-time portal creates a distinct Lounge login and preconfigured Ergo SASL
 network for each invited member. There is no shared password.
 
 Each member also receives a separately authenticated, owner-scoped BotHerder
-session with their chosen IRC name. It can use operator-allow-listed AM4 models
-and invite any number of outbound remote agents. The member's persistent
-`#herder-<display-name>` channel presents the Herder's read-only laboratory
+session with their chosen IRC name. It can use operator-allow-listed models
+routed by HEARTH and invite any number of outbound remote agents. The member's
+persistent `#lab-<slug>` channel presents the Herder's read-only laboratory
 view from canonical HEARTH and community-registry data. See
 [docs/COMMUNITY-ONBOARDING.md](docs/COMMUNITY-ONBOARDING.md) and
 [docs/COMPUTE-BOT.md](docs/COMPUTE-BOT.md).
@@ -96,7 +96,7 @@ security tradeoff of exposing an agent's API server to a chat channel.
 | Internal Ergo | `ergo:6667` | Plain IRC | Compose network only |
 | BotHerder IRC handoff | `127.0.0.1:6667` on AM4 | Plain IRC | Host-networked BotHerder only |
 | Canonical execution | `omen.tail8e749c.ts.net:8443/mcp` from AM4 | Tailnet-only trusted HTTPS through Tailscale Serve | BotHerder's least-privilege HEARTH adapter |
-| Seeded model | `127.0.0.1:8082/v1` from HEARTH over its declared AM4 Provider | HTTP plus Bearer authentication | Routed AM4-local inference; BotHerder direct rollback only |
+| Seeded model | none on this host | n/a | AM4 runs no model listener since the B70s moved into OMEN on 2026-08-20; all inference is routed by HEARTH, and direct rollback is unavailable |
 
 There is no router port forwarding, public VM, Cloudflare configuration, or
 publicly bound Docker TCP port for IRC. Registration is disabled, all normal
@@ -159,7 +159,7 @@ Do not use `tailscale funnel reset`; it would also remove AM4's gallery route.
 - Nickname and SASL account: personal Ergo account (`admin` initially)
 - SASL mechanism: PLAIN
 - Automatic joins: `#general`, `#ops`, and the member's
-  `#herder-<display-name>` storefront (`#herder-derek` for the administrator)
+  `#lab-<slug>` storefront (`#lab-derek` for the administrator)
 - Reconnect: enabled, 10-second delay, unlimited retries
 
 Existing clients should remove or disable the old OMEN `6697`/`127.0.0.1`
