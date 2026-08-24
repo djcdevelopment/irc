@@ -26,7 +26,7 @@ connects directly to Ergo. This deployment does not run Quassel Core.
 | SASL mechanism | PLAIN |
 | SASL account | Your Ergo account name |
 | SASL password | Your personal Ergo account password |
-| Automatic joins | `#general`, `#ops`, and your assigned `#herder-<display-name>` storefront |
+| Automatic joins | `#general`, `#ops`, and your assigned `#lab-<your-lab>` storefront |
 | Automatic reconnect | On; 10 seconds; unlimited retries |
 
 Tailscale Funnel supplies a publicly trusted certificate for
@@ -56,7 +56,7 @@ Ergo account and password through a trusted channel.
 11. Add `/JOIN #general`, `/JOIN #ops`, and the storefront channel returned by
     onboarding under connect commands, or mark all three channels for
     automatic join after joining once. The administrator storefront is
-    `#herder-derek`.
+    `#lab-derek`.
 12. Delete or disable the old `omen...:6697` and `127.0.0.1:6697` entries so
     Quassel cannot cycle into the retained rollback server.
 13. Apply and connect.
@@ -73,8 +73,8 @@ Ergo account and password through a trusted channel.
    verification enabled.
 6. Enable SASL PLAIN and save the personal account and password.
 7. Enable automatic reconnect and automatic joins for `#general`, `#ops`, and
-   the storefront channel returned by onboarding (`#herder-derek` for the
-   administrator).
+    the storefront channel returned by onboarding (`#lab-derek` for the
+    administrator).
 8. Remove the old OMEN 6697 server entry if it was copied from Windows.
 9. Connect. The certificate should validate normally without a prompt.
 
@@ -117,6 +117,24 @@ database. Ergo is authoritative for the shared account, channel ownership, and
 8. Ask the operator to restart the AM4 stack.
 9. Reconnect and confirm the account, shared channels, storefront, and history
    remain.
+
+## Phone setup
+
+The Quasseldroid (Android) and iQuassel (iPhone/iPad) apps speak to a Quassel
+Core. AM4 does not run Quassel Core, so those apps cannot connect to this IRC
+server as Quassel clients. Desktop Quassel works because **Quassel Monolithic /
+Standalone** connects directly to Ergo.
+
+On a phone, the supported zero-install option is the browser lobby:
+
+`https://am4.tail8e749c.ts.net:10000/`
+
+Log in with the same IRC account and password from the invitation. The account,
+channels, and server history remain the same; save the page to the home screen
+if convenient. If using a native mobile IRC app instead, configure a direct IRC
+connection with host `am4.tail8e749c.ts.net`, port `8443`, TLS and certificate
+verification enabled, SASL PLAIN using the same account and password, and no
+server password. Do not choose a Quassel Core connection mode.
 
 ## Troubleshooting
 

@@ -1088,25 +1088,45 @@ class BotHerder:
             target, f"revoked remote agent {value['account']}; future SASL is blocked"
         )
 
+    def _allowed_model_ids(self) -> set[str]:
+        """The model names a member can actually name in !ask, case-folded.
+
+        HEARTH declares every model the fleet can route; models.toml declares the
+        subset this community is allowed to spend. !models must show the
+        intersection: a rung HEARTH serves but the allow-list omits cannot be
+        asked for — `!ask` would fold the name into the prompt — so listing it
+        would advertise something the bot will not dispatch.
+        """
+        allowed: set[str] = set()
+        for model in self.config.models.values():
+            allowed.add(model.name.casefold())
+            allowed.add(model.model_id.casefold())
+        return allowed
+
     async def _list_models(self, target: str, nick: str) -> None:
         projection = await self._get_storefront()
         providers = (projection or {}).get("providers") or []
-        if providers:
+        allowed = self._allowed_model_ids()
+        listed = [
+            (provider, model)
+            for provider in providers[:8]
+            if isinstance(provider, dict)
+            for model in (provider.get("models") or [])[:12]
+            if str(model).casefold() in allowed
+        ]
+        if listed:
             await self._lab_profile()
             fmt = self._formatter()
-            for provider in providers[:8]:
-                if not isinstance(provider, dict):
-                    continue
+            for provider, model in listed:
                 purpose = ",".join(provider.get("tags") or []) or "general"
-                for model in (provider.get("models") or [])[:12]:
-                    await self._reply(
-                        target,
-                        f"{nick}: {fmt.accent(str(model))} via {provider.get('name', '?')} "
-                        + fmt.kv_line(
-                            ("purpose", purpose),
-                            ("slots", provider.get("parallel_slots", "unknown")),
-                        ),
-                    )
+                await self._reply(
+                    target,
+                    f"{nick}: {fmt.accent(str(model))} via {provider.get('name', '?')} "
+                    + fmt.kv_line(
+                        ("purpose", purpose),
+                        ("slots", provider.get("parallel_slots", "unknown")),
+                    ),
+                )
             return
         for model in self.config.models.values():
             await self._reply(target, f"{nick}: {model.name} - {model.description}")

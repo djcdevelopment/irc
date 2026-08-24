@@ -325,12 +325,12 @@ def test_basic() -> None:
         print("PASS 1: authenticated acceptance client connected to Ergo")
 
         client.send(f"PRIVMSG {ACCEPTANCE_CHANNEL} :{BOT_NICK}: models")
-        models, _ = client.wait_for_bot("gpt-oss-120b")
+        models, _ = client.wait_for_bot("qwen3-30b-a3b")
         print_transcript("models", models)
         print("PASS 2: addressed models command returned the seeded allow-list")
 
         client.send(
-            f"PRIVMSG {ACCEPTANCE_CHANNEL} :{BOT_NICK}: ask gpt-oss-120b "
+            f"PRIVMSG {ACCEPTANCE_CHANNEL} :{BOT_NICK}: ask qwen3-30b-a3b "
             "name one software architecture pattern"
         )
         working, _ = client.wait_for_bot("working")
@@ -339,7 +339,7 @@ def test_basic() -> None:
             raise AcceptanceFailure("simple completion was empty")
         print_transcript("ask-ack", working)
         print_transcript("ask-result", completion[0][0])
-        print("PASS 3: gpt-oss-120b returned a non-empty completion")
+        print("PASS 3: qwen3-30b-a3b returned a non-empty completion")
 
         # A line that names no provider is treated as the question itself and
         # routed to the default model. The acknowledgement names the provider,
@@ -347,7 +347,7 @@ def test_basic() -> None:
         client.send(
             f"PRIVMSG {ACCEPTANCE_CHANNEL} :!ask what is a bloom filter?"
         )
-        routed, _ = client.wait_for_bot("via gpt-oss-120b")
+        routed, _ = client.wait_for_bot("via qwen3-30b-a3b")
         print_transcript("default-route", routed)
         client.drain(3)
         print("PASS 4: bare !ask routed to the default model and named it")
@@ -386,7 +386,7 @@ def test_basic() -> None:
         ):
             client.send(
                 f"PRIVMSG {ACCEPTANCE_CHANNEL} :{BOT_NICK}: "
-                f"ask gpt-oss-120b {prompt}"
+                f"ask qwen3-30b-a3b {prompt}"
             )
             client.wait_for_bot("working")
             candidate = client.collect_completion()
@@ -426,7 +426,7 @@ def test_basic() -> None:
         # the acknowledgements and completions for the refusal.
         for index in range(8):
             client.send(
-                f"PRIVMSG {ACCEPTANCE_CHANNEL} :{BOT_NICK}: ask gpt-oss-120b "
+                f"PRIVMSG {ACCEPTANCE_CHANNEL} :{BOT_NICK}: ask qwen3-30b-a3b "
                 f"rate-test-{index}"
             )
         try:
@@ -477,13 +477,20 @@ def wait_for_model(timeout: float = 900) -> None:
 
 
 def test_disruption() -> None:
+    raise AcceptanceFailure(
+        "the model-disruption tests cannot run on AM4: they stop and restart "
+        "the local b70-moe.service and poll 127.0.0.1:8082/health, and both "
+        "left with the B70s in the 2026-08-20 move into OMEN. Inference now "
+        "reaches IRC through HEARTH, so disrupting it means stopping a rung "
+        "on OMEN, not a service on this host. Re-point these before use."
+    )
     account, password = credentials()
     client = IRCClient(account, password)
     model_stopped = False
     try:
         client.login()
         client.send(
-            f"PRIVMSG {ACCEPTANCE_CHANNEL} :{BOT_NICK}: ask gpt-oss-120b "
+            f"PRIVMSG {ACCEPTANCE_CHANNEL} :{BOT_NICK}: ask qwen3-30b-a3b "
             "Explain the circuit breaker pattern in three sentences."
         )
         working, _ = client.wait_for_bot("working")
@@ -504,7 +511,7 @@ def test_disruption() -> None:
     try:
         recovery.login()
         recovery.send(
-            f"PRIVMSG {ACCEPTANCE_CHANNEL} :{BOT_NICK}: ask gpt-oss-120b "
+            f"PRIVMSG {ACCEPTANCE_CHANNEL} :{BOT_NICK}: ask qwen3-30b-a3b "
             "name one software architecture pattern"
         )
         recovery.wait_for_bot("working")
@@ -527,13 +534,20 @@ def test_disruption() -> None:
 
 
 def test_recovery_only() -> None:
+    raise AcceptanceFailure(
+        "the model-disruption tests cannot run on AM4: they stop and restart "
+        "the local b70-moe.service and poll 127.0.0.1:8082/health, and both "
+        "left with the B70s in the 2026-08-20 move into OMEN. Inference now "
+        "reaches IRC through HEARTH, so disrupting it means stopping a rung "
+        "on OMEN, not a service on this host. Re-point these before use."
+    )
     wait_for_model()
     account, password = credentials()
     client = IRCClient(account, password)
     try:
         client.login()
         client.send(
-            f"PRIVMSG {ACCEPTANCE_CHANNEL} :{BOT_NICK}: ask gpt-oss-120b "
+            f"PRIVMSG {ACCEPTANCE_CHANNEL} :{BOT_NICK}: ask qwen3-30b-a3b "
             "name one software architecture pattern"
         )
         client.wait_for_bot("working")

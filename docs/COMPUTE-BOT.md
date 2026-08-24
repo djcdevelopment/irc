@@ -24,14 +24,14 @@ Your own Herder answers a bare `!` command:
 
 ```text
 !ask what is a bloom filter?
-!ask gpt-oss-120b review this design
+!ask qwen3-30b-a3b review this design
 !ask MyRemoteAgent explain one architecture pattern
 !models
 !status
 ```
 
 Each member also has one persistent storefront channel, such as
-`#herder-derek`. Its read-only laboratory view is projected from HEARTH and
+`#lab-derek`. Its read-only laboratory view is projected from HEARTH and
 the community registrar:
 
 ```text
@@ -64,7 +64,7 @@ repeated evidence supports a small adjustment.
 Naming a model or agent is optional. When the first word is not a known
 provider, the whole line is the question and the configured `default_model`
 answers it. The acknowledgement names whichever provider was chosen —
-`working... (req 0b9660d1a495 via gpt-oss-120b)` — so a mistyped agent name is
+`working... (req 0b9660d1a495 via qwen3-30b-a3b)` — so a mistyped agent name is
 visible rather than silently answered by the default model.
 
 A bare `!` command is answered **only** by the Herder whose owner sent it, no
@@ -103,20 +103,24 @@ channel-only reader has no way to discover it exists.
 ## Model presentation registry
 
 `config/compute-bot/models.toml` is BotHerder's operator-controlled command
-allow-list and display registry. The endpoint/key fields remain for `direct`
-rollback and `shadow`; in `hearth` mode HEARTH independently resolves the
-declared model through its Provider registry:
+allow-list and display registry. In `hearth` mode HEARTH independently resolves
+the declared model through its Provider registry, and `endpoint`/`api_key_env`
+are optional — the bot never dials the model itself, and the live rung binds
+OMEN loopback, which AM4 cannot reach. Both fields stay required in `direct`
+and `shadow` mode, which do dial the model:
 
 ```toml
-[models.gpt-oss-120b]
-model_id = "gpt-oss-120b"
-endpoint = "http://127.0.0.1:8082/v1"
-api_key_env = "GPT_OSS_120B_API_KEY"
+[models.qwen3-30b-a3b]
+model_id = "qwen3-30b-a3b"
 max_tokens = 512
 min_max_tokens = 512
 timeout_seconds = 120
-description = "Local 120B reasoning model on AM4"
+description = "Qwen3-30B-A3B on OMEN's dual Arc Pro B70s, via HEARTH"
 ```
+
+`!models` lists the intersection of this allow-list and HEARTH's declared
+providers, so a model the fleet can route but this community may not spend is
+not advertised.
 
 The effective output budget is never below `min_max_tokens`, preventing an
 empty reasoning-model result. A model must be allowed by both BotHerder and
@@ -244,12 +248,11 @@ displayed as `not reported`.
 
 ## Networking and hardening
 
-The supervisor retains host networking for Ergo, portal, direct rollback, and
-remote-agent compatibility:
+The supervisor retains host networking for Ergo, portal, and remote-agent
+compatibility:
 
 ```text
 IRC:   127.0.0.1:6667
-Direct rollback model: 127.0.0.1:8082/v1
 Portal internal API: 127.0.0.1:9010
 Canonical execution: https://omen.tail8e749c.ts.net:8443/mcp
 ```

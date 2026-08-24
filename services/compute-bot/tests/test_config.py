@@ -202,6 +202,70 @@ api_key_env = "HEARTH_API_KEY"
                 },
             )
 
+    def test_hearth_mode_allows_a_model_with_no_endpoint(self):
+        # In hearth mode the bot never dials the model: it sends model_id to the
+        # door and HEARTH routes. The live rung binds OMEN loopback, unreachable
+        # from the AM4 host, so there is no honest URL to write here.
+        bot = BOT_CONFIG + """
+[hearth]
+mode = "hearth"
+endpoint = "https://omen.tail.example:8443/mcp"
+api_key_env = "HEARTH_API_KEY"
+"""
+        models = """
+[models.qwen3-30b-a3b]
+model_id = "qwen3-30b-a3b"
+max_tokens = 512
+min_max_tokens = 512
+description = "Qwen3-30B-A3B via HEARTH"
+"""
+        config = self._load(
+            bot=bot,
+            models=models,
+            env={
+                "IRC_BOT_PASSWORD": "present",
+                "COMMUNITY_INTERNAL_TOKEN": "internal-secret",
+                "HEARTH_API_KEY": "hearth-secret",
+            },
+        )
+        model = config.models["qwen3-30b-a3b"]
+        self.assertEqual("", model.endpoint)
+        self.assertEqual("", model.api_key_env)
+        self.assertEqual("qwen3-30b-a3b", model.model_id)
+
+    def test_hearth_mode_still_validates_an_endpoint_that_is_present(self):
+        bot = BOT_CONFIG + """
+[hearth]
+mode = "hearth"
+endpoint = "https://omen.tail.example:8443/mcp"
+api_key_env = "HEARTH_API_KEY"
+"""
+        models = """
+[models.qwen3-30b-a3b]
+model_id = "qwen3-30b-a3b"
+endpoint = "http://127.0.0.1:8082/nope"
+description = "Bad endpoint"
+"""
+        with self.assertRaisesRegex(ConfigError, "endpoint"):
+            self._load(
+                bot=bot,
+                models=models,
+                env={
+                    "IRC_BOT_PASSWORD": "present",
+                    "COMMUNITY_INTERNAL_TOKEN": "internal-secret",
+                    "HEARTH_API_KEY": "hearth-secret",
+                },
+            )
+
+    def test_direct_mode_still_requires_a_model_endpoint(self):
+        models = """
+[models.qwen3-30b-a3b]
+model_id = "qwen3-30b-a3b"
+description = "No endpoint"
+"""
+        with self.assertRaisesRegex(ConfigError, "endpoint"):
+            self._load(models=models)
+
     def test_remote_hearth_plaintext_is_rejected(self):
         bot = BOT_CONFIG + """
 [hearth]

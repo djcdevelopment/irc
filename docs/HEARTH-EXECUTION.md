@@ -9,7 +9,7 @@ authenticated IRC account
   → HEARTH Operation scheduler
   → global Provider lease
   → existing backend router
-  → AM4 gpt-oss-120b
+  → OMEN qwen3-30b-a3b
   → immutable result artifact
   → bounded IRC projection
 ```
@@ -27,6 +27,12 @@ operation = "llm.chat"
 ```
 
 - `direct` is the prior AM4-local provider call and the rollback.
+  **Unavailable since 2026-08-20:** the B70s that served it moved into OMEN, so
+  AM4 hosts no model listener. The live rung binds OMEN loopback and this host
+  cannot reach it, so there is no direct endpoint left to fall back to. In
+  `hearth` mode `endpoint` and `api_key_env` are therefore optional in
+  `models.toml`; both stay required in `direct`/`shadow`, which do dial the
+  model. Restoring rollback means giving AM4 a reachable model endpoint again.
 - `shadow` returns the direct answer and sends only model, byte count, and
   desired policy to `plan_execution`. HEARTH does not receive the prompt and
   does not dispatch a second completion.
@@ -127,7 +133,14 @@ Roll through `shadow`, inspect `hearth_shadow_plan` log entries, then use
 
 ## Rollback
 
-Set:
+**This path is currently closed.** It assumed a local llama-server on AM4, and
+that machine has hosted no inference since 2026-08-20. Setting `mode = "direct"`
+today fails config validation, because the seeded model declares no endpoint —
+correctly, since there is no reachable one to declare. Restoring rollback means
+first giving AM4 a model endpoint it can dial, then re-adding `endpoint` and
+`api_key_env` to `models.toml`.
+
+The historical procedure, for when that is true again:
 
 ```toml
 mode = "direct"
@@ -141,7 +154,7 @@ delete the Execution Ledger during rollback; it remains historical evidence.
 Verify:
 
 1. `!status` reports `execution=hearth`.
-2. `!ask gpt-oss-120b name one software architecture pattern` returns a
+2. `!ask qwen3-30b-a3b name one software architecture pattern` returns a
    non-empty answer.
 3. The corresponding HEARTH Job records the IRC account principal and
    `botherder-am4` adapter.
@@ -150,7 +163,9 @@ Verify:
    BotHerder logs.
 6. `tailscale serve status` shows the OMEN 8443 route as private Serve, not
    Funnel.
-7. Switching to `direct` and back is one config change plus container recreate.
+7. Switching to `direct` and back is one config change plus container
+   recreate — see the Rollback note above: this no longer holds while AM4 has
+   no model endpoint.
 
 The focused live probe is:
 

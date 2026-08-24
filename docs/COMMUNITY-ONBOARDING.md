@@ -29,9 +29,9 @@ to add Quassel.
 
 The completed outcome is a personal Ergo SASL identity, persistent Lounge
 login, automatic `#general`/`#ops` channels, a persistent
-`#herder-<display-name>` storefront, and an owner-scoped BotHerder. The
+`#lab-<your-lab>` storefront, and an owner-scoped BotHerder. The
 storefront channel name is derived by lowercasing the display name, replacing
-non-alphanumeric runs with hyphens, and prefixing `#herder-`.
+non-alphanumeric runs with hyphens, and prefixing `#lab-`.
 The same account password is used for Ergo SASL and the member's private Lounge
 login; they are not separate credentials.
 Steam/OpenID recovery binding is not implemented yet and is clearly labeled as
@@ -44,7 +44,11 @@ The same credential works in Quassel Monolithic/Standalone:
 - TLS and certificate verification: enabled
 - nickname and SASL account: the chosen IRC name
 - SASL password: the one-time displayed password
-- automatic channels: `#general,#ops,#herder-<display-name>`
+- automatic channels: `#general,#ops,#lab-<your-lab>`
+
+For the complete desktop and phone client setup, see [QUASSEL.md](QUASSEL.md).
+The Android/iPhone Quassel apps require a Quassel Core, which AM4 does not run;
+use the browser lobby or a native IRC client that supports direct TLS and SASL.
 
 The public member guide is available before or after login:
 
@@ -61,7 +65,7 @@ troubleshooting steps are presented as a mobile-friendly webpage at
 `https://am4.tail8e749c.ts.net/guide/`. The bot also returns this link from
 `!help`.
 
-The member's `#herder-<display-name>` channel is the persistent storefront for
+The member's `#lab-<your-lab>` channel is the persistent storefront for
 read-only catalog, hardware, model, agent, status, recent-activity, and artifact
 views. The complete storefront command list and its HEARTH projection boundary
 are documented in [COMPUTE-BOT.md](COMPUTE-BOT.md).
@@ -76,7 +80,7 @@ Herder explicitly:
 !status
 SamsBotHerder: help
 SamsBotHerder: models
-SamsBotHerder: ask gpt-oss-120b name one architecture pattern
+SamsBotHerder: ask qwen3-30b-a3b name one architecture pattern
 SamsBotHerder: status
 ```
 

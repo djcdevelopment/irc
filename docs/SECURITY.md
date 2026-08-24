@@ -30,7 +30,6 @@ binding was added for IRC.
 | 6667/TCP | Compose network plus `127.0.0.1` on AM4 | Plain internal transport | The Lounge, BotHerder, portal, and local recovery |
 | 9000/TCP | `127.0.0.1` on AM4 | HTTP | Funnel backend for The Lounge |
 | 9010/TCP | `127.0.0.1` on AM4 | HTTP | Funnel backend for `/join`, `/guide`, and internal Herder API |
-| 8082/TCP | Existing AM4 model listener; UFW-restricted | HTTP plus Bearer authentication | BotHerder and existing LAN tooling |
 | 8443/TCP on OMEN | Tailnet-only Tailscale Serve | Trusted HTTPS | BotHerder → HEARTH MCP control plane |
 | 6697/TCP | Not published on AM4 | Not used | Retained only by the stopped OMEN rollback |
 
@@ -154,10 +153,10 @@ the visible nickname.
   Provider-wide capacity lease still bounds aggregate backend concurrency.
 - Public Lounge credentials are only as safe as each member's password hygiene;
   future Steam/OpenID binding should add recovery, not replace Ergo SASL.
-- The pre-existing 8082 launcher passes its bearer key through llama.cpp's
-  `--api-key` argument. BotHerder stores its copy in a root-only env file, but
-  the model launcher should migrate to `--api-key-file` in its owning baseline
-  repository.
+- AM4 stopped hosting a model listener on 2026-08-20, when the B70s moved into
+  OMEN. The 8082 bearer key it used is no longer issued to BotHerder, and
+  `GPT_OSS_120B_API_KEY` was dropped from the bot's env file on 2026-08-24.
+  Inference now leaves this host only through the authenticated HEARTH adapter.
 
 ## Before direct public exposure
 
