@@ -308,6 +308,17 @@ PY
 )
 admin_account="${admin_credentials[0]}"
 admin_password="${admin_credentials[1]}"
+
+# Single source of truth for the administrator's storefront channel: the same
+# [storefront] table the companion bot reads. Registering any other channel
+# leaves the bot presenting a lab it does not own and cannot op, so it could
+# not keep the welcome topic current.
+storefront_channel="$(
+    sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' \
+        "$project_dir/config/compute-bot/bot.toml" | head -n 1
+)"
+storefront_channel="${storefront_channel:-#lab-derek}"
+
 registrar_password="$(
     sed -n 's/^COMMUNITY_REGISTRAR_PASSWORD=//p' "$community_env_file"
 )"
@@ -369,14 +380,20 @@ storefront_setup="$(
         "AUTHENTICATE PLAIN" \
         "AUTHENTICATE $sasl_plain" \
         "CAP END" \
-        "JOIN #herder-derek" \
-        "PRIVMSG ChanServ :REGISTER #herder-derek" \
-        "PRIVMSG ChanServ :AMODE #herder-derek +o $primary_herder" \
-        "PRIVMSG ChanServ :INFO #herder-derek" \
+        "JOIN $storefront_channel" \
+        "PRIVMSG ChanServ :REGISTER $storefront_channel" \
+        "PRIVMSG ChanServ :AMODE $storefront_channel +o $primary_herder" \
+        "PRIVMSG ChanServ :INFO $storefront_channel" \
         "QUIT :Storefront registration complete"
 )"
-grep -Eq 'registered|already registered|already exists' <<<"$storefront_setup" ||
-    die "Derek's storefront channel was not registered"
+# "must be an oper on the channel" means the channel exists and is already
+# registered to someone else -- on this network the onboarding registrar founds
+# the #lab-<slug> channels, so the administrator's own REGISTER is refused with
+# that wording. The channel existing is all provisioning needs; the AMODE grant
+# that follows is issued by the registrar, which does hold founder access.
+grep -Eq 'is registered|successfully registered|must be an oper on the channel' \
+    <<<"$storefront_setup" ||
+    die "Derek's storefront channel $storefront_channel was not registered"
 
 step "Building and starting the portal and BotHerder supervisor"
 "${compose[@]}" -f "$compose_file" config --quiet
@@ -410,7 +427,9 @@ fi
 
 step "Registering Derek's migrated BotHerder ownership"
 admin_token="$(sed -n 's/^COMMUNITY_ADMIN_TOKEN=//p' "$community_env_file")"
-PRIMARY_HERDER="$primary_herder" python3 - "$bootstrap_file" <<'PY' |
+PRIMARY_HERDER="$primary_herder" \
+    STOREFRONT_CHANNEL="$storefront_channel" \
+    python3 - "$bootstrap_file" <<'PY' |
 import json
 import os
 import sys
@@ -422,6 +441,10 @@ print(json.dumps({
     "account_password": bootstrap["AdminPassword"],
     "herder_account": os.environ["PRIMARY_HERDER"],
     "display_name": "Derek",
+    # A brand-new profile is seeded with the channel the companion bot
+    # actually presents. An existing profile keeps its own channel, so
+    # this never repoints a lab that members already visit.
+    "storefront_channel": os.environ["STOREFRONT_CHANNEL"],
 }))
 PY
     curl --silent --show-error --fail-with-body \
@@ -465,8 +488,10 @@ PY
 done
 
 # The primary companion has no member file; its storefront channel comes from
-# the portal profile. Grant it channel operator there too (idempotent, and a
-# no-op while the profile still points at the legacy admin-founded channel).
+# the portal profile, which is seeded above from bot.toml's [storefront] table.
+# Grant it channel operator there too. Idempotent, and it re-reads the profile
+# rather than the derived value so a channel renamed from the lab editor still
+# gets the grant.
 internal_token="$(sed -n 's/^COMMUNITY_INTERNAL_TOKEN=//p' "$community_env_file")"
 primary_channel="$(
     curl --silent --max-time 10 \

@@ -121,6 +121,16 @@ oper_password="${local_secrets[1]}"
 admin_account="${local_secrets[2]}"
 admin_password="${local_secrets[3]}"
 
+# Single source of truth for the administrator's storefront channel: the same
+# [storefront] table the companion bot reads. Registering any other channel
+# leaves the bot presenting a lab it does not own and cannot op, so it could
+# not keep the welcome topic current.
+storefront_channel="$(
+    sed -n 's/^channel *= *"\([^"]*\)".*/\1/p' \
+        "$project_dir/config/compute-bot/bot.toml" | head -n 1
+)"
+storefront_channel="${storefront_channel:-#lab-derek}"
+
 step "Pulling pinned official images"
 "${compose[@]}" -f "$compose_file" pull ergo thelounge
 
@@ -241,8 +251,8 @@ if [[ "$database_was_present" == false ]]; then
             "PRIVMSG ChanServ :REGISTER #general" \
             "JOIN #ops" \
             "PRIVMSG ChanServ :REGISTER #ops" \
-            "JOIN #herder-derek" \
-            "PRIVMSG ChanServ :REGISTER #herder-derek" \
+            "JOIN $storefront_channel" \
+            "PRIVMSG ChanServ :REGISTER $storefront_channel" \
             "PRIVMSG #ops :Infrastructure channel initialized by AM4 bootstrap." \
             "QUIT :Bootstrap channel setup complete"
     )"

@@ -19,6 +19,22 @@ $script:SecretsFile = Join-Path $script:Root '.secrets\bootstrap.json'
 $script:ErgoImage = 'ghcr.io/ergochat/ergo:v2.19.0'
 $script:LoungeImage = 'ghcr.io/thelounge/thelounge:4.5.2'
 
+function Get-StorefrontChannel {
+    # Single source of truth for the administrator's storefront channel: the
+    # same [storefront] table the companion bot reads. Registering any other
+    # channel leaves the bot presenting a lab it does not own and cannot op,
+    # so it could not keep the welcome topic current.
+    $botConfig = Join-Path $script:Root 'config\compute-bot\bot.toml'
+    if (Test-Path $botConfig) {
+        $match = Select-String -Path $botConfig -Pattern '^channel\s*=\s*"([^"]+)"' |
+            Select-Object -First 1
+        if ($match) {
+            return $match.Matches[0].Groups[1].Value
+        }
+    }
+    return '#lab-derek'
+}
+
 function Write-Step {
     param([string]$Message)
     Write-Host "`n==> $Message" -ForegroundColor Cyan
@@ -388,6 +404,7 @@ function Initialize-ErgoState {
 
     $saslPlain = ([char]0) + $Secrets.AdminAccount + ([char]0) + $Secrets.AdminPassword
     $saslPayload = [Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($saslPlain))
+    $storefront = Get-StorefrontChannel
     $channels = Invoke-LocalIrcSession -Commands @(
         'CAP LS 302'
         "NICK $($Secrets.AdminAccount)"
@@ -407,15 +424,16 @@ function Initialize-ErgoState {
         'PRIVMSG ChanServ :REGISTER #general'
         'JOIN #ops'
         'PRIVMSG ChanServ :REGISTER #ops'
-        'JOIN #herder-derek'
-        'PRIVMSG ChanServ :REGISTER #herder-derek'
+        "JOIN $storefront"
+        "PRIVMSG ChanServ :REGISTER $storefront"
         'PRIVMSG ChanServ :INFO #general'
         'PRIVMSG ChanServ :INFO #ops'
-        'PRIVMSG ChanServ :INFO #herder-derek'
+        "PRIVMSG ChanServ :INFO $storefront"
         'PRIVMSG #ops :Infrastructure channel initialized by bootstrap.'
         'QUIT :Bootstrap channel setup complete'
     )
-    if ($channels -notmatch 'Channel #general is registered' -or $channels -notmatch 'Channel #ops is registered' -or $channels -notmatch 'Channel #herder-derek is registered') {
+    $storefrontPattern = 'Channel {0} is registered' -f [regex]::Escape($storefront)
+    if ($channels -notmatch 'Channel #general is registered' -or $channels -notmatch 'Channel #ops is registered' -or $channels -notmatch $storefrontPattern) {
         throw "Could not create or confirm the initial channels. Server response:`n$channels"
     }
 }

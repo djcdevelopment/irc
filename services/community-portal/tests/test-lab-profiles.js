@@ -185,6 +185,62 @@ async function main() {
 			"the Herder was not granted channel operator"
 		);
 
+		// Provisioning names the administrator's storefront channel explicitly,
+		// reading it from the companion bot's own [storefront] table, so a
+		// brand-new profile takes it instead of the legacy default.
+		const primary = await request("POST", "/api/admin/members", {
+			body: {
+				owner_account: "admin",
+				herder_account: "HEARTH",
+				display_name: "Derek",
+				storefront_channel: "#lab-derek",
+			},
+			token: ADMIN_TOKEN,
+		});
+		assert.equal(primary.status, 200, JSON.stringify(primary.body));
+		// A re-run with a different channel does not repoint the live lab.
+		const rerun = await request("POST", "/api/admin/members", {
+			body: {
+				owner_account: "admin",
+				herder_account: "HEARTH",
+				display_name: "Derek",
+				storefront_channel: "#lab-moved",
+			},
+			token: ADMIN_TOKEN,
+		});
+		assert.equal(rerun.status, 200, JSON.stringify(rerun.body));
+		const badChannel = await request("POST", "/api/admin/members", {
+			body: {
+				owner_account: "admin",
+				herder_account: "HEARTH",
+				display_name: "Derek",
+				storefront_channel: "lab-derek",
+			},
+			token: ADMIN_TOKEN,
+		});
+		assert.equal(badChannel.status, 400);
+		assert.equal(badChannel.body.error, "invalid_storefront_channel");
+		storefronts = await request("GET", "/api/internal/storefronts", {
+			token: INTERNAL_TOKEN,
+		});
+		const adminEntry = storefronts.body.storefronts.find(
+			(entry) => entry.owner_account === "admin"
+		);
+		assert.equal(
+			adminEntry.channel,
+			"#lab-derek",
+			"provisioning's storefront channel was not honoured, or was repointed"
+		);
+		assert.ok(
+			ergo.amodes.some(
+				(entry) =>
+					entry.channel === "#lab-derek" &&
+					entry.mode === "+o" &&
+					entry.account === "HEARTH"
+			),
+			"the primary companion was not granted channel operator"
+		);
+
 		// A restart re-runs the backfill without duplicating or renaming.
 		await portal.stop();
 		portal = await startPortal(root, ergo.port);
@@ -193,7 +249,7 @@ async function main() {
 		});
 		assert.deepEqual(
 			storefronts.body.storefronts.map((entry) => entry.lab_slug).sort(),
-			["neon-basement", "neon-basement-2"],
+			["derek", "neon-basement", "neon-basement-2"],
 			"restart changed lab slugs"
 		);
 
