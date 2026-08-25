@@ -308,13 +308,30 @@ An administrator can inspect and transfer registrations using:
 /CS TRANSFER #project alice
 ```
 
-`#general`, `#ops`, and the administrator's `#herder-derek` storefront are
-created and registered by bootstrap. The onboarding registrar creates each
-new member's `#lab-<slug>` storefront channel (the lab name chosen at
-onboarding, defaulting to the display name) and grants the member's companion
-bot channel-operator status so it can keep the welcome topic current. Members
-provisioned before Personal AI Storefronts keep their legacy
-`#herder-<display-name>` channel until they rename it from the lab editor.
+`#general`, `#ops`, and the administrator's storefront channel are created and
+registered by bootstrap. The administrator's channel is not hardcoded: the
+bootstrap and provisioning scripts read `channel` from the `[storefront]` table
+of `config/compute-bot/bot.toml`, which is the same value the companion bot
+presents, so the registered channel and the presented channel cannot drift
+apart. It is `#lab-derek` today. Change it in `bot.toml` and the scripts
+follow; the value is also handed to the portal so a brand-new administrator
+profile is seeded with it rather than the legacy `#herder-<display-name>`
+default.
+
+The onboarding registrar creates each new member's `#lab-<slug>` storefront
+channel (the lab name chosen at onboarding, defaulting to the display name) and
+grants the member's companion bot channel-operator status so it can keep the
+welcome topic current. Members provisioned before Personal AI Storefronts keep
+their legacy `#herder-<display-name>` channel until they rename it from the lab
+editor.
+
+An existing storefront profile always keeps its channel, so re-running
+provisioning never repoints a lab that members already visit. On the live AM4
+network `#lab-derek` — founded by the onboarding registrar, with `HEARTH`
+holding `+o` — was already correct and was left untouched. The legacy
+`#herder-derek` was unregistered on 2026-08-24; its stored history went with
+the registration, and the prototype findings it held survive in
+`RETROSPECTIVE-STOREFRONT-PROTOTYPE.md` and `STOREFRONT-UX-JOURNAL.md`.
 
 ## Personal AI Storefronts
 
@@ -509,8 +526,9 @@ Lounge users, and local backups.
 
 1. Install Quassel Monolithic/Standalone on the first machine.
 2. Connect to `omen.tail8e749c.ts.net:6697` with TLS and SASL.
-3. Join `#general` and `#herder-derek`; confirm `/CS INFO` shows both are
-   registered.
+3. Join `#general` and the administrator's storefront channel — the one
+   `[storefront] channel` names in `config/compute-bot/bot.toml`,
+   `#lab-derek` today; confirm `/CS INFO` shows both are registered.
 4. Send several uniquely identifiable messages.
 5. Disconnect Quassel.
 6. Add a personal Lounge user, configure the same Ergo SASL account, and send a
@@ -519,7 +537,7 @@ Lounge users, and local backups.
 8. Install Quassel Monolithic on a second machine with the same Ergo account.
 9. Confirm both clients remain connected with the same nickname.
 10. Run `docker compose restart` on OMEN.
-11. Reconnect and confirm account, `#general`, `#ops`, `#herder-derek`, and
-    message history.
+11. Reconnect and confirm account, `#general`, `#ops`, the storefront
+    channel, and message history.
 12. Run `.\scripts\check.ps1 -Persistence` and retain its output with the
     operational record.

@@ -485,6 +485,25 @@ function validLabName(value) {
 	return text;
 }
 
+// The administrator's storefront channel is provisioned from the companion
+// bot's own [storefront] table, so provisioning may name it explicitly rather
+// than fall back to the legacy #herder-<display-name> derivation.
+function validStorefrontChannel(value) {
+	if (value === undefined || value === null || value === "") {
+		return "";
+	}
+	if (
+		typeof value !== "string" ||
+		!/^#[^\x00\x07\r\n ,:]{1,63}$/.test(value)
+	) {
+		throw Object.assign(
+			new Error("storefront channel must be a valid #channel name"),
+			{status: 400, code: "invalid_storefront_channel"}
+		);
+	}
+	return value;
+}
+
 function backfillStorefrontProfiles() {
 	const members = database
 		.prepare("SELECT owner_account, display_name FROM members")
@@ -496,11 +515,6 @@ function backfillStorefrontProfiles() {
 			channel: storefrontChannel(member.display_name),
 		});
 	}
-}
-
-function memberChannel(ownerAccount, displayName) {
-	const profile = getProfile(ownerAccount);
-	return profile ? profile.channel : storefrontChannel(displayName);
 }
 
 function labUrl(slug) {
@@ -2021,7 +2035,16 @@ async function route(request, response) {
 			"BotHerder account"
 		);
 		const displayName = validDisplayName(body.display_name, ownerAccount);
-		const storefront = memberChannel(ownerAccount, displayName);
+		// An existing profile keeps its channel, so a lab renamed from the
+		// editor is never repointed by a re-run. A brand-new member takes a
+		// channel named by the caller, which is how provisioning passes the
+		// one the companion bot's [storefront] table sets, and otherwise
+		// falls back to the legacy derivation.
+		const requestedChannel = validStorefrontChannel(body.storefront_channel);
+		const priorProfile = getProfile(ownerAccount);
+		const storefront = priorProfile
+			? priorProfile.channel
+			: requestedChannel || storefrontChannel(displayName);
 		await ensureStorefrontChannel(storefront, herderAccount);
 		if (body.account_password !== undefined) {
 			const password = validProvisioningPassword(body.account_password);
