@@ -1,0 +1,67 @@
+# P2P Inference & Networking Constellation Manifest
+#
+# Peer-to-peer inference networking, IRC agent channels, and guest engineering front doors
+# running against the local dual Arc Pro B70 GPU inference substrate.
+
+schema_version: 1
+
+archetype: engineering-only
+topology: centered
+conformance: canonical
+
+intent: "Networking and peer-to-peer inference front doors for remote agents on local GPUs"
+
+constellation:
+  name: p2p-inference
+  description: "Peer-to-peer inference networking, IRC agent channels, and guest engineering front doors"
+  root_path: C:\work\irc
+  pm_workspace: docs/
+
+identity:
+  github_org: djcdevelopment
+
+telemetry:
+  otel_collector_endpoint: "http://localhost:4317"
+  otel_protocol: grpc
+  service_name_prefix: p2p-inference
+
+repos:
+  - name: irc
+    kind: git
+    role: "Ergo IRC server, Lounge browser client, BotHerder companion, and remote agent adapter"
+    producer_type: runtime_execution
+    github: djcdevelopment/irc
+    visibility: private
+    local_path: C:\work\irc
+    primary: true
+    lifecycle: active
+    surfaces:
+      - name: the-lounge
+        kind: web-app
+        lifecycle: active
+      - name: ergo-ircd
+        kind: bot-daemon
+        lifecycle: active
+
+  - name: nightshift
+    kind: filesystem
+    role: "Guest-facing AI engineering front door: student assignment portal running on local dual Arc Pro B70s"
+    producer_type: runtime_execution
+    local_path: C:\work\nightshift
+    primary: false
+    depends_on:
+      - irc
+    lifecycle: active
+    surfaces:
+      - name: guest-portal
+        kind: web-app
+        lifecycle: active
+
+contracts:
+  - name: p2p-inference-dispatch
+    producer_repo: irc
+    consumer_repos:
+      - nightshift
+    contract_doc: docs/RETROSPECTIVE.md
+    stability: stable
+    scope: cross-repo
